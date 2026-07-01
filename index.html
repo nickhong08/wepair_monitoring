@@ -420,8 +420,8 @@ function stIcon(kind,cls){
   return '<svg class="sic '+cls+'" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">'+g+'</svg>';
 }
 function statusChips(v){ const s=getStatus(v); const b=BODY_META[s.body], p=PAINT_META[s.paint];
-  return '<span class="st" data-track="body" data-id="'+esc(v.dbId)+'" title="'+b.lab+' · 탭하여 변경">판금'+stIcon(b.ic,b.cls)+'</span>'+
-         '<span class="st" data-track="paint" data-id="'+esc(v.dbId)+'" title="'+p.lab+' · 탭하여 변경">도장'+stIcon(p.ic,p.cls)+'</span>'; }
+  return '<span class="st" data-track="body" data-id="'+esc(v.dbId)+'" title="판금 · 탭하여 변경">'+b.lab+stIcon(b.ic,b.cls)+'</span>'+
+         '<span class="st" data-track="paint" data-id="'+esc(v.dbId)+'" title="도장 · 탭하여 변경">'+p.lab+stIcon(p.ic,p.cls)+'</span>'; }
 function wireChips(el){ el.querySelectorAll(".st").forEach(function(ch){
   ch.addEventListener("click",function(e){ e.stopPropagation(); cycleStatus(ch.getAttribute("data-track"), ch.getAttribute("data-id")); }); }); }
 
@@ -754,6 +754,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
