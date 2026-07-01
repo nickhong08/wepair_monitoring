@@ -293,6 +293,7 @@ let sbClient = null, SHOP_ID = null;
 
 const KNOWN_ADVISORS=["노승완","김명섭","김윤재","곽은석","홍나희","정문기","김승찬"];
 const INSURED_TYPES=["자차","대물"];
+const RECENT_DONE_DAYS=3;   // 출고완료 차량은 출고예정일이 최근 3일 이내(또는 예정)일 때만 현황판에 남김
 const BOARD_TODAY=(function(){var d=new Date();d.setHours(0,0,0,0);return d;})();
 const PLACEHOLDER="data:image/svg+xml;utf8,"+encodeURIComponent(
   "<svg xmlns='http://www.w3.org/2000/svg' width='200' height='140'><rect width='200' height='140' fill='%23eceef0'/><text x='100' y='75' font-size='13' fill='%239aa0a6' text-anchor='middle' font-family='sans-serif'>사진 없음</text></svg>");
@@ -336,7 +337,8 @@ function mapRow(r){
   return v;
 }
 
-let DATA=[]; let STATUS={}; let OVERRIDE={}; let currentAdvisor="전체"; let suppressUntil=0;
+let RAW=[]; let DATA=[]; let STATUS={}; let OVERRIDE={}; let currentAdvisor="전체"; let suppressUntil=0;
+/* RAW = 표에서 불러온 전체 차량, DATA = 현황판에 실제로 담을 대상(수리중 + 최근 출고완료)만 걸러낸 것 */
 
 /* ── 작업 상태 ── */
 function defaultStatus(v){ let st={body:0,paint:0,done:false,long:false,prio:false};
@@ -344,6 +346,18 @@ function defaultStatus(v){ let st={body:0,paint:0,done:false,long:false,prio:fal
     if(n<=0){st.body=1;st.paint=2;} else if(n===1){st.body=1;st.paint=1;} else if(n===2){st.body=1;st.paint=0;} }
   return st; }
 function getStatus(v){ const s=STATUS[v.dbId]; return s?{body:s.body,paint:s.paint,done:!!s.done,long:!!s.long,prio:!!s.prio}:defaultStatus(v); }
+/* 현황판에 담을 대상인지 판정 (필터 숫자·KPI·칸 배치의 공통 기준) */
+function relevant(v){
+  var s=getStatus(v);
+  if(v.discharge){                                   // 출고예정일이 있는 차량
+    if(s.done) return dayDiff(BOARD_TODAY, v.discharge) <= RECENT_DONE_DAYS;  // 완료 → 최근/예정건만 남김
+    return true;                                     // 미완료 → 요일·지연 칸에 표시
+  }
+  if(s.done) return false;                            // 출고일 없는 완료건은 숨김
+  if(s.long) return true;                             // 장기건(작업대기)
+  return recentUnset(v);                              // 미정 → 최근 입고(30일)만
+}
+function rebuildData(){ DATA = RAW.filter(relevant); }
 function saveErr(e){ console.error(e); alert("상태 저장 실패: "+(e&&e.message?e.message:e)); }
 function statusRow(dbId,s){ return { db_id:dbId, shop_id:SHOP_ID, body:s.body, paint:s.paint, done:!!s.done, is_long:!!s.long, is_prio:!!s.prio, updated_at:new Date().toISOString() }; }
 function persist(v){ const s=getStatus(v); suppressUntil=Date.now()+6000;
@@ -356,7 +370,7 @@ function saveOverride(dbId, patch){
   sbClient.from("vehicle_status").upsert(row,{onConflict:"db_id"}).then(function(res){ if(res.error) saveErr(res.error); });
 }
 function setOvDischarge(dbId, ymdStr){
-  const v=DATA.find(x=>x.dbId===dbId); if(!v) return;
+  const v=RAW.find(x=>x.dbId===dbId); if(!v) return;
   const o=OVERRIDE[dbId]||(OVERRIDE[dbId]={});
   const origY=v.orig.discharge?ymd(v.orig.discharge):"";
   o.discharge=(ymdStr&&ymdStr!==origY)?ymdStr:null;     // 원본과 같으면 수정값 해제
@@ -364,7 +378,7 @@ function setOvDischarge(dbId, ymdStr){
   saveOverride(dbId,{ ov_discharge:o.discharge });
 }
 function setOvAdvisor(dbId, name){
-  const v=DATA.find(x=>x.dbId===dbId); if(!v) return;
+  const v=RAW.find(x=>x.dbId===dbId); if(!v) return;
   const o=OVERRIDE[dbId]||(OVERRIDE[dbId]={});
   o.advisor=(name && name!==v.orig.advisor)?name:null;
   applyOverrides(v); render(); buildAdvisorFilter();
@@ -373,7 +387,7 @@ function setOvAdvisor(dbId, name){
 function ovText(input, origVal){ var s=(input==null?"":String(input)).trim(); var base=(origVal==null||origVal==="-")?"":String(origVal).trim(); return (s===""||s===base)?null:s; }
 function ovDate(input, origDate){ if(!input) return null; var o=origDate?ymd(origDate):""; return input===o?null:input; }
 function saveEdit(dbId){
-  const v=DATA.find(x=>x.dbId===dbId); if(!v) return;
+  const v=RAW.find(x=>x.dbId===dbId); if(!v) return;
   const g=function(sel){ var el=modalBox.querySelector(sel); return el?el.value:null; };
   var advSel=g("#edAdv");
   var memoIn=g("#edMemo"); memoIn=memoIn==null?"":memoIn; var memoBase=v.orig.memo||"";
@@ -393,19 +407,19 @@ function saveEdit(dbId){
 }
 function revertAll(dbId){
   if(!confirm("이 차량의 수정값을 모두 지우고 위페어 원본으로 되돌릴까요?")) return;
-  const v=DATA.find(x=>x.dbId===dbId); if(!v) return;
+  const v=RAW.find(x=>x.dbId===dbId); if(!v) return;
   OVERRIDE[dbId]={};
   applyOverrides(v); render(); buildAdvisorFilter();
   saveOverride(dbId,{ ov_discharge:null, ov_advisor:null, ov_memo:null, ov_owner:null, ov_insurer:null, ov_insurer_staff:null, ov_rent:null });
   openDetail(v);
 }
 function cmpCard(a,b){ return (getStatus(a).done-getStatus(b).done)||(getStatus(b).prio-getStatus(a).prio)||a.plate.localeCompare(b.plate); }
-function cycleStatus(track,dbId){ const v=DATA.find(x=>x.dbId===dbId); if(!v) return; const s=getStatus(v);
+function cycleStatus(track,dbId){ const v=RAW.find(x=>x.dbId===dbId); if(!v) return; const s=getStatus(v);
   if(track==="body") s.body=(s.body+1)%2; else s.paint=(s.paint+1)%3; STATUS[dbId]=s; render(); persist(v); }
-function setStatusExact(track,dbId,val){ const v=DATA.find(x=>x.dbId===dbId); if(!v) return; const s=getStatus(v); s[track]=val; STATUS[dbId]=s; render(); openDetail(v); persist(v); }
-function toggleDone(dbId){ const v=DATA.find(x=>x.dbId===dbId); if(!v) return; const s=getStatus(v); s.done=!s.done; STATUS[dbId]=s; render(); openDetail(v); persist(v); }
-function toggleLong(dbId){ const v=DATA.find(x=>x.dbId===dbId); if(!v) return; const s=getStatus(v); s.long=!s.long; STATUS[dbId]=s; render(); openDetail(v); persist(v); }
-function togglePrio(dbId){ const v=DATA.find(x=>x.dbId===dbId); if(!v) return; const s=getStatus(v); s.prio=!s.prio; STATUS[dbId]=s; render(); openDetail(v); persist(v); }
+function setStatusExact(track,dbId,val){ const v=RAW.find(x=>x.dbId===dbId); if(!v) return; const s=getStatus(v); s[track]=val; STATUS[dbId]=s; render(); openDetail(v); persist(v); }
+function toggleDone(dbId){ const v=RAW.find(x=>x.dbId===dbId); if(!v) return; const s=getStatus(v); s.done=!s.done; STATUS[dbId]=s; render(); openDetail(v); persist(v); }
+function toggleLong(dbId){ const v=RAW.find(x=>x.dbId===dbId); if(!v) return; const s=getStatus(v); s.long=!s.long; STATUS[dbId]=s; render(); openDetail(v); persist(v); }
+function togglePrio(dbId){ const v=RAW.find(x=>x.dbId===dbId); if(!v) return; const s=getStatus(v); s.prio=!s.prio; STATUS[dbId]=s; render(); openDetail(v); persist(v); }
 
 /* 공정 상태 = 현장 용어 + 아이콘(색상은 기존 유지: 대기 회색 · 하지 주황 · 완료 초록) */
 const BODY_META=[{lab:"판금대기",ic:"dot",cls:"ic-gray"},{lab:"판금완료",ic:"dotcircle",cls:"ic-green"}];
@@ -464,6 +478,7 @@ function colControl(key, undone, label){
 
 /* ── 렌더 ── */
 function render(){
+  rebuildData();
   const WD7=["일","월","화","수","목","금","토"];
   const days=[]; { const c=new Date(BOARD_TODAY); c.setDate(c.getDate()-1); while(days.length<6){ if(c.getDay()!==0) days.push(new Date(c)); c.setDate(c.getDate()+1); } }
   const winStart=days[0]; const dayKeys=days.map(d=>ymd(d));
@@ -655,12 +670,13 @@ function openUnset(){
   }).join("") : '<div class="nophoto">출고일 미정 차량이 없습니다.</div>';
   modalBox.innerHTML='<div class="mhead"><span class="mt">출고일 미정 차량 ('+list.length+')</span><button class="x" id="mClose">✕</button></div><div class="mbody"><div class="ulist">'+rows+'</div></div>';
   modalBox.querySelector("#mClose").addEventListener("click", closeModal);
-  modalBox.querySelectorAll(".urow").forEach(function(rw){ rw.addEventListener("click", function(){ const v=DATA.find(x=>x.dbId===rw.getAttribute("data-id")); if(v) openDetail(v); }); });
+  modalBox.querySelectorAll(".urow").forEach(function(rw){ rw.addEventListener("click", function(){ const v=RAW.find(x=>x.dbId===rw.getAttribute("data-id")); if(v) openDetail(v); }); });
   overlay.classList.add("show");
 }
 
 /* ── 필터 ── */
 function buildAdvisorFilter(){
+  rebuildData();
   const sel=document.getElementById("advFilter");
   const names=["전체"].concat(KNOWN_ADVISORS.filter(n=>DATA.some(v=>v.advisor===n)));
   if(DATA.some(v=>v.advisor==="미분류")) names.push("미분류");
@@ -672,18 +688,29 @@ function buildAdvisorFilter(){
 
 /* ── 데이터 로드 + 실시간 ── */
 function onErr(e){ document.getElementById("board").innerHTML='<div style="padding:30px;color:#b00">'+esc(e&&e.message?e.message:e)+'</div>'; }
+/* Supabase 는 한 번에 최대 1000행만 주므로, 나눠서 전부 불러온다(집계 누락 방지) */
+async function loadAll(table){
+  var all=[], from=0, size=1000;
+  while(true){
+    var r = await sbClient.from(table).select("*").range(from, from+size-1);
+    if(r.error) throw r.error;
+    var chunk=r.data||[]; all=all.concat(chunk);
+    if(chunk.length<size) break;
+    from+=size;
+  }
+  return all;
+}
 async function loadData(){
-  const r1 = await sbClient.from("vehicles").select("*");
-  const r2 = await sbClient.from("vehicle_status").select("*");
-  if(r1.error){ onErr(r1.error); return; }
+  const vs = await loadAll("vehicles");
+  const ss = await loadAll("vehicle_status");
   STATUS = {}; OVERRIDE = {};
-  (r2.data||[]).forEach(function(s){ STATUS[s.db_id]={body:s.body,paint:s.paint,done:s.done,long:s.is_long,prio:s.is_prio}; OVERRIDE[s.db_id]=ovFrom(s); });
-  DATA = (r1.data||[]).map(mapRow);   // mapRow 안에서 OVERRIDE 를 반영하므로 STATUS·OVERRIDE 먼저 구성
+  ss.forEach(function(s){ STATUS[s.db_id]={body:s.body,paint:s.paint,done:s.done,long:s.is_long,prio:s.is_prio}; OVERRIDE[s.db_id]=ovFrom(s); });
+  RAW = vs.map(mapRow);   // STATUS·OVERRIDE 먼저 구성 후 매핑
   buildAdvisorFilter(); render();
 }
 function applyStatusChange(p){
-  if(p.eventType==="DELETE"){ var oid=p.old&&p.old.db_id; if(oid){ delete STATUS[oid]; delete OVERRIDE[oid]; var ov=DATA.find(function(x){return x.dbId===oid;}); if(ov) applyOverrides(ov); } }
-  else if(p.new){ var r=p.new; STATUS[r.db_id]={body:r.body,paint:r.paint,done:r.done,long:r.is_long,prio:r.is_prio}; OVERRIDE[r.db_id]=ovFrom(r); var v=DATA.find(function(x){return x.dbId===r.db_id;}); if(v) applyOverrides(v); }
+  if(p.eventType==="DELETE"){ var oid=p.old&&p.old.db_id; if(oid){ delete STATUS[oid]; delete OVERRIDE[oid]; var ov=RAW.find(function(x){return x.dbId===oid;}); if(ov) applyOverrides(ov); } }
+  else if(p.new){ var r=p.new; STATUS[r.db_id]={body:r.body,paint:r.paint,done:r.done,long:r.is_long,prio:r.is_prio}; OVERRIDE[r.db_id]=ovFrom(r); var v=RAW.find(function(x){return x.dbId===r.db_id;}); if(v) applyOverrides(v); }
   if(!overlay.classList.contains("show") && Date.now()>=suppressUntil) render();
 }
 function subscribeRealtime(){
@@ -694,10 +721,9 @@ function subscribeRealtime(){
 function startVehicleRefresh(){
   setInterval(function(){
     if(overlay.classList.contains("show") || Date.now()<suppressUntil) return;
-    sbClient.from("vehicles").select("*").then(function(res){
-      if(res.error||!res.data) return;
-      DATA = res.data.map(mapRow); buildAdvisorFilter(); render();
-    });
+    loadAll("vehicles").then(function(vs){
+      RAW = vs.map(mapRow); buildAdvisorFilter(); render();
+    }).catch(function(e){ console.error(e); });
   }, 5*60*1000);   // 차량 목록은 5분마다 새로고침(동기화 10분 주기 반영)
 }
 
@@ -754,6 +780,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
