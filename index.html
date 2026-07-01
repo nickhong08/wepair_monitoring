@@ -210,6 +210,25 @@
   .logincard input{width:100%;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:15px;margin-bottom:10px;box-sizing:border-box}
   .logincard button{width:100%;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:800;background:var(--teal);color:#fff;cursor:pointer}
   .loginerr{color:var(--red);font-size:13px;margin-top:10px;text-align:center;min-height:16px}
+
+/* 드래그 / 정보수정 (추가) */
+.card[draggable=true]{ cursor:grab; }
+.card.dragging{ opacity:.45; }
+.col.dragover{ outline:2px dashed #2563eb; outline-offset:-3px; background:rgba(37,99,235,.06); border-radius:10px; }
+.editbtn{ width:100%; margin:8px 0 4px; padding:11px; border:1px solid #d6dae0; background:#f7f8fa; color:#333; border-radius:9px; font-size:14px; font-weight:600; cursor:pointer; }
+.editbtn:hover{ background:#eef0f3; }
+.edbadge,.src.edit{ display:inline-block; margin-left:6px; padding:1px 7px; font-size:11px; font-weight:600; color:#2563eb; background:#e8f0fe; border-radius:10px; vertical-align:middle; }
+.edhint{ font-size:12px; color:#888; margin:6px 0 12px; line-height:1.5; }
+.edform{ display:flex; flex-direction:column; gap:10px; }
+.edrow{ display:flex; align-items:center; gap:10px; }
+.edrow.col{ align-items:flex-start; flex-direction:column; gap:5px; }
+.edrow .edk{ flex:0 0 92px; font-size:13px; color:#666; font-weight:600; }
+.edrow input,.edrow select,.edrow textarea{ flex:1; width:100%; padding:9px 11px; border:1px solid #d6dae0; border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box; background:#fff; }
+.edrow textarea{ resize:vertical; }
+.edbtns{ display:flex; gap:9px; margin-top:14px; }
+.edsave{ flex:1; padding:12px; border:0; background:#2563eb; color:#fff; border-radius:9px; font-size:15px; font-weight:700; cursor:pointer; }
+.edcancel{ flex:0 0 84px; padding:12px; border:1px solid #d6dae0; background:#fff; color:#555; border-radius:9px; font-size:14px; cursor:pointer; }
+.edrevert{ width:100%; margin-top:10px; padding:10px; border:0; background:transparent; color:#c0392b; font-size:13px; cursor:pointer; text-decoration:underline; }
 </style>
 </head>
 <body>
@@ -280,19 +299,36 @@ function fmt(d){ return d?ymd(d).replace(/-/g,"."):"미정"; }
 function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 function dateOnly(s){ if(!s) return null; const p=String(s).slice(0,10).split("-"); return new Date(+p[0],+p[1]-1,+p[2]); }
 
-/* Supabase vehicles 행 → 화면 표준 형태 (파싱은 동기화 단계에서 끝나 깔끔) */
+/* Supabase vehicles 행 → 화면 표준 형태
+   원본은 v.orig 에 보관, 화면에 보이는 값은 applyOverrides 가 (수정값 있으면 수정값) 으로 덮어씀 */
+function escA(s){ return esc(s).replace(/"/g,"&quot;"); }
+function ovFrom(s){ return { discharge:s.ov_discharge, advisor:s.ov_advisor, memo:s.ov_memo, owner:s.ov_owner, insurer:s.ov_insurer, insurerStaff:s.ov_insurer_staff, rent:s.ov_rent }; }
+function applyOverrides(v){
+  const o=OVERRIDE[v.dbId]||{};
+  const t=function(x){ return (x!=null && String(x).trim()!=="")?x:null; };
+  v.discharge    = o.discharge ? dateOnly(o.discharge) : v.orig.discharge;
+  v.dischargeSrc = o.discharge ? "edit" : v.dischargeSrcOrig;
+  v.advisor      = t(o.advisor)      || v.orig.advisor;
+  v.memo         = (o.memo!=null)    ? o.memo : v.orig.memo;
+  v.owner        = t(o.owner)        || v.orig.owner;
+  v.insurer      = t(o.insurer)      || v.orig.insurer;
+  v.insurerStaff = t(o.insurerStaff) || v.orig.insurerStaff;
+  v.rent         = t(o.rent)         || v.orig.rent;
+  v.edited = { discharge:!!o.discharge, advisor:!!t(o.advisor), memo:o.memo!=null, owner:!!t(o.owner), insurer:!!t(o.insurer), insurerStaff:!!t(o.insurerStaff), rent:!!t(o.rent) };
+}
 function mapRow(r){
-  return { dbId:r.db_id, plate:(r.plate||"").trim(), model:(r.model||"").trim(),
+  const v={ dbId:r.db_id, plate:(r.plate||"").trim(), model:(r.model||"").trim(),
     insurance:(r.insurance||"").trim(),
-    intake: dateOnly(r.intake), discharge: dateOnly(r.discharge), dischargeSrc: r.discharge_src||null,
-    color:r.color||"-", owner:r.owner||"-",
-    rent:"-", insurer:"-", insurerStaff:"-",
-    memo:r.memo||"", photo:r.photo||null,
+    intake: dateOnly(r.intake),
+    color:r.color||"-", photo:r.photo||null,
     photos:[r.photo, r.work_order].filter(Boolean),
-    advisor:r.advisor||"미분류" };
+    dischargeSrcOrig: r.discharge_src||null,
+    orig:{ discharge: dateOnly(r.discharge), advisor:r.advisor||"미분류", memo:r.memo||"", owner:r.owner||"-", insurer:"-", insurerStaff:"-", rent:"-" } };
+  applyOverrides(v);
+  return v;
 }
 
-let DATA=[]; let STATUS={}; let currentAdvisor="전체"; let suppressUntil=0;
+let DATA=[]; let STATUS={}; let OVERRIDE={}; let currentAdvisor="전체"; let suppressUntil=0;
 
 /* ── 작업 상태 ── */
 function defaultStatus(v){ let st={body:0,paint:0,done:false,long:false,prio:false};
@@ -304,6 +340,57 @@ function saveErr(e){ console.error(e); alert("상태 저장 실패: "+(e&&e.mess
 function statusRow(dbId,s){ return { db_id:dbId, shop_id:SHOP_ID, body:s.body, paint:s.paint, done:!!s.done, is_long:!!s.long, is_prio:!!s.prio, updated_at:new Date().toISOString() }; }
 function persist(v){ const s=getStatus(v); suppressUntil=Date.now()+6000;
   sbClient.from("vehicle_status").upsert(statusRow(v.dbId,s),{onConflict:"db_id"}).then(function(res){ if(res.error) saveErr(res.error); }); }
+
+/* ── 수정값(override) 저장 — 원본 vehicles 는 건드리지 않고 vehicle_status 의 ov_* 칸에만 기록 ── */
+function saveOverride(dbId, patch){
+  suppressUntil=Date.now()+6000;
+  const row=Object.assign({ db_id:dbId, shop_id:SHOP_ID, updated_at:new Date().toISOString() }, patch);
+  sbClient.from("vehicle_status").upsert(row,{onConflict:"db_id"}).then(function(res){ if(res.error) saveErr(res.error); });
+}
+function setOvDischarge(dbId, ymdStr){
+  const v=DATA.find(x=>x.dbId===dbId); if(!v) return;
+  const o=OVERRIDE[dbId]||(OVERRIDE[dbId]={});
+  const origY=v.orig.discharge?ymd(v.orig.discharge):"";
+  o.discharge=(ymdStr&&ymdStr!==origY)?ymdStr:null;     // 원본과 같으면 수정값 해제
+  applyOverrides(v); render();
+  saveOverride(dbId,{ ov_discharge:o.discharge });
+}
+function setOvAdvisor(dbId, name){
+  const v=DATA.find(x=>x.dbId===dbId); if(!v) return;
+  const o=OVERRIDE[dbId]||(OVERRIDE[dbId]={});
+  o.advisor=(name && name!==v.orig.advisor)?name:null;
+  applyOverrides(v); render(); buildAdvisorFilter();
+  saveOverride(dbId,{ ov_advisor:o.advisor });
+}
+function ovText(input, origVal){ var s=(input==null?"":String(input)).trim(); var base=(origVal==null||origVal==="-")?"":String(origVal).trim(); return (s===""||s===base)?null:s; }
+function ovDate(input, origDate){ if(!input) return null; var o=origDate?ymd(origDate):""; return input===o?null:input; }
+function saveEdit(dbId){
+  const v=DATA.find(x=>x.dbId===dbId); if(!v) return;
+  const g=function(sel){ var el=modalBox.querySelector(sel); return el?el.value:null; };
+  var advSel=g("#edAdv");
+  var memoIn=g("#edMemo"); memoIn=memoIn==null?"":memoIn; var memoBase=v.orig.memo||"";
+  const patchO={
+    discharge: ovDate(g("#edDis"), v.orig.discharge),
+    advisor: (advSel && advSel!==v.orig.advisor)?advSel:null,
+    memo: (memoIn===memoBase)?null:memoIn,
+    owner: ovText(g("#edOwner"), v.orig.owner),
+    insurer: ovText(g("#edIns"), v.orig.insurer),
+    insurerStaff: ovText(g("#edInsStaff"), v.orig.insurerStaff),
+    rent: ovText(g("#edRent"), v.orig.rent)
+  };
+  OVERRIDE[dbId]=patchO;
+  applyOverrides(v); render(); buildAdvisorFilter();
+  saveOverride(dbId,{ ov_discharge:patchO.discharge, ov_advisor:patchO.advisor, ov_memo:patchO.memo, ov_owner:patchO.owner, ov_insurer:patchO.insurer, ov_insurer_staff:patchO.insurerStaff, ov_rent:patchO.rent });
+  openDetail(v);
+}
+function revertAll(dbId){
+  if(!confirm("이 차량의 수정값을 모두 지우고 위페어 원본으로 되돌릴까요?")) return;
+  const v=DATA.find(x=>x.dbId===dbId); if(!v) return;
+  OVERRIDE[dbId]={};
+  applyOverrides(v); render(); buildAdvisorFilter();
+  saveOverride(dbId,{ ov_discharge:null, ov_advisor:null, ov_memo:null, ov_owner:null, ov_insurer:null, ov_insurer_staff:null, ov_rent:null });
+  openDetail(v);
+}
 function cmpCard(a,b){ return (getStatus(a).done-getStatus(b).done)||(getStatus(b).prio-getStatus(a).prio)||a.plate.localeCompare(b.plate); }
 function cycleStatus(track,dbId){ const v=DATA.find(x=>x.dbId===dbId); if(!v) return; const s=getStatus(v);
   if(track==="body") s.body=(s.body+1)%2; else s.paint=(s.paint+1)%3; STATUS[dbId]=s; render(); persist(v); }
@@ -397,6 +484,11 @@ function render(){
   days.forEach(function(d,i){
     const isToday=ymd(d)===ymd(BOARD_TODAY);
     const col=document.createElement("div"); col.className="col"+(isToday?" today":"");
+    (function(dd){   // 카드를 이 요일 칸으로 드래그하면 출고예정일을 그 날짜로 변경
+      col.addEventListener("dragover",function(e){ e.preventDefault(); e.dataTransfer.dropEffect="move"; col.classList.add("dragover"); });
+      col.addEventListener("dragleave",function(e){ if(e.target===col) col.classList.remove("dragover"); });
+      col.addEventListener("drop",function(e){ e.preventDefault(); col.classList.remove("dragover"); var id=e.dataTransfer.getData("text/plain"); if(id) setOvDischarge(id, ymd(dd)); });
+    })(d);
     col.innerHTML='<div class="colhead"><span><span class="d">'+WD7[d.getDay()]+'</span> <span class="date">'+(d.getMonth()+1)+'/'+d.getDate()+'</span></span><span class="cnt">'+cols[i].length+'</span></div>';
     if(cols[i].length===0){ col.innerHTML+='<div class="empty">—</div>'; }
     else {
@@ -447,6 +539,11 @@ function cardEl(v, compact, sel){
   var th=el.querySelector(".thumb"); if(th && v.photo) th.onerror=function(){ imgErr(th); };
   if(sel){ el.addEventListener("click",function(){ sel.toggle(v); }); }
   else { el.addEventListener("click",function(){ openDetail(v); }); if(!st.done) wireChips(el); }
+  if(!sel){   // PC에서 카드를 다른 요일 칸으로 끌어 출고일 변경 (모바일은 상세 > 정보 수정에서 날짜 선택)
+    el.draggable=true;
+    el.addEventListener("dragstart",function(e){ e.dataTransfer.setData("text/plain", v.dbId); e.dataTransfer.effectAllowed="move"; el.classList.add("dragging"); });
+    el.addEventListener("dragend",function(){ el.classList.remove("dragging"); document.querySelectorAll(".col.dragover").forEach(function(c){ c.classList.remove("dragover"); }); });
+  }
   return el;
 }
 
@@ -462,17 +559,19 @@ function lrowTel(label,val){ const digits=(val||"").replace(/[^0-9]/g,"");
   return '<div class="lrow"><span class="k">'+label+'</span><span class="v">'+esc(val&&val!=="-"?val:"-")+'</span></div>'; }
 function lrowText(label,val){ return '<div class="lrow"><span class="k">'+label+'</span><span class="v">'+esc(val&&val!=="-"?val:"-")+'</span></div>'; }
 
-function openDetail(v){
+function openDetail(v, edit){
   const ins=isInsured(v.insurance); const s=getStatus(v);
+  if(edit){ return openEditForm(v, ins); }
   const colorChip=(v.color&&v.color!=="-")?'<span class="colorchip">색상 '+esc(v.color)+'</span>':'';
   const photosHtml=(v.photos&&v.photos.length)?'<div class="photos">'+v.photos.map(p=>'<img data-full="'+p+'" src="'+p+'">').join("")+'</div>':'<div class="nophoto">등록된 작업사진이 없습니다.</div>';
-  const advLine='<div class="vadv">담당 어드바이저 · <b>'+esc(v.advisor)+'</b></div>';
+  const advLine='<div class="vadv">담당 어드바이저 · <b>'+esc(v.advisor)+'</b>'+(v.edited.advisor?'<span class="edbadge">수정됨</span>':'')+'</div>';
+  const editBtnHtml='<button class="editbtn" id="editBtn">✎ 정보 수정 (출고일·담당자·연락처·메모)</button>';
   modalBox.innerHTML=
     '<div class="mhead"><span class="mt">차량 상세'+(s.done?" · 출고완료":"")+'</span><button class="x" id="mClose">✕</button></div>'+
     '<div class="mbody">'+
       '<img class="hero" src="'+(v.photo||PLACEHOLDER)+'">'+
       '<div class="vinfo"><span class="btag '+(ins?"ins":"gen")+'">'+esc(v.insurance||"-")+'</span><span class="pl">'+esc(v.plate)+'</span><span class="md">'+esc(v.model)+'</span>'+colorChip+'<span class="priochip'+(s.prio?" on":"")+'" id="prioBtn">'+(s.prio?"★ 우선작업":"☆ 우선작업")+'</span></div>'+
-      advLine+
+      advLine+ editBtnHtml+
       '<button class="shipbtn '+(s.done?"on":"")+'" id="shipBtn">'+(s.done?"↩ 출고 완료 취소":"✓ 출고 완료 처리")+'</button>'+
       (!v.discharge ? '<button class="longbtn '+(s.long?"on":"")+'" id="longBtn">'+(s.long?"↩ 장기건 해제 (미정으로)":"⏳ 장기건(작업대기)으로 이동")+'</button>' : '')+
       '<div class="grp"><div class="grp-t">작업 상태 · 탭하여 변경</div><div class="segwrap">'+
@@ -481,7 +580,7 @@ function openDetail(v){
       '</div></div>'+
       '<div class="grp"><div class="grp-t">일정</div><div class="duo">'+
         '<div class="cell"><div class="k">입고일</div><div class="v">'+fmt(v.intake)+'</div></div>'+
-        '<div class="cell out"><div class="k">출고 예정일</div><div class="v">'+fmt(v.discharge)+(v.dischargeSrc==="memo"?'<span class="src">메모 기준</span>':"")+'</div></div>'+
+        '<div class="cell out"><div class="k">출고 예정일</div><div class="v">'+fmt(v.discharge)+(v.dischargeSrc==="edit"?'<span class="src edit">수정됨</span>':v.dischargeSrc==="memo"?'<span class="src">메모 기준</span>':"")+'</div></div>'+
       '</div></div>'+
       '<div class="grp"><div class="grp-t">연락처 · 보험</div><div class="rows">'+
         lrowTel("차주 연락처",v.owner)+lrowText("렌트카 정보",v.rent)+lrowText("보험사",v.insurer)+lrowTel("보험사 담당자",v.insurerStaff)+
@@ -490,6 +589,7 @@ function openDetail(v){
       '<div class="grp"><div class="grp-t">작업사진</div>'+photosHtml+'</div>'+
     '</div>';
   modalBox.querySelector("#mClose").addEventListener("click", closeModal);
+  var eb=modalBox.querySelector("#editBtn"); if(eb) eb.addEventListener("click", function(){ openDetail(v, true); });
   var pb=modalBox.querySelector("#prioBtn"); if(pb) pb.addEventListener("click", function(){ togglePrio(v.dbId); });
   var sb=modalBox.querySelector("#shipBtn"); if(sb) sb.addEventListener("click", function(){ toggleDone(v.dbId); });
   var lb2=modalBox.querySelector("#longBtn"); if(lb2) lb2.addEventListener("click", function(){ toggleLong(v.dbId); });
@@ -497,6 +597,37 @@ function openDetail(v){
   var hero=modalBox.querySelector(".hero"); if(hero && v.photo) hero.onerror=function(){ imgErr(hero); };
   modalBox.querySelectorAll(".photos img").forEach(function(im){ im.onerror=function(){ imgErr(im); }; im.addEventListener("click", function(){ openLightbox(im.getAttribute("data-full")); }); });
   overlay.classList.add("show");
+}
+
+/* ── 정보 수정 폼 (출고일·담당자·연락처·보험·메모) ── */
+function openEditForm(v, ins){
+  var opts=KNOWN_ADVISORS.slice();
+  if(opts.indexOf(v.advisor)<0) opts.unshift(v.advisor);
+  if(opts.indexOf("미분류")<0) opts.push("미분류");
+  var advSelHtml=opts.map(function(n){ return '<option value="'+escA(n)+'"'+(n===v.advisor?" selected":"")+'>'+esc(n)+'</option>'; }).join("");
+  var disVal=v.discharge?ymd(v.discharge):"";
+  var tv=function(x){ return (x&&x!=="-")?escA(x):""; };
+  modalBox.innerHTML=
+    '<div class="mhead"><span class="mt">정보 수정</span><button class="x" id="mClose">✕</button></div>'+
+    '<div class="mbody">'+
+      '<div class="vinfo"><span class="btag '+(ins?"ins":"gen")+'">'+esc(v.insurance||"-")+'</span><span class="pl">'+esc(v.plate)+'</span><span class="md">'+esc(v.model)+'</span></div>'+
+      '<div class="edhint">수정한 값은 모든 사용자에게 즉시 공유됩니다. 위페어 원본 데이터는 바뀌지 않아요.</div>'+
+      '<div class="edform">'+
+        '<label class="edrow"><span class="edk">출고 예정일</span><input type="date" id="edDis" value="'+disVal+'"></label>'+
+        '<label class="edrow"><span class="edk">담당자</span><select id="edAdv">'+advSelHtml+'</select></label>'+
+        '<label class="edrow"><span class="edk">차주 연락처</span><input type="text" id="edOwner" inputmode="tel" value="'+tv(v.owner)+'"></label>'+
+        '<label class="edrow"><span class="edk">렌트카 정보</span><input type="text" id="edRent" value="'+tv(v.rent)+'"></label>'+
+        '<label class="edrow"><span class="edk">보험사</span><input type="text" id="edIns" value="'+tv(v.insurer)+'"></label>'+
+        '<label class="edrow"><span class="edk">보험사 담당자</span><input type="text" id="edInsStaff" inputmode="tel" value="'+tv(v.insurerStaff)+'"></label>'+
+        '<label class="edrow col"><span class="edk">메모</span><textarea id="edMemo" rows="3">'+esc(v.memo||"")+'</textarea></label>'+
+      '</div>'+
+      '<div class="edbtns"><button class="edcancel" id="edCancel">취소</button><button class="edsave" id="edSave">저장</button></div>'+
+      '<button class="edrevert" id="edRevert">↩ 원본으로 되돌리기 (수정값 전체 삭제)</button>'+
+    '</div>';
+  modalBox.querySelector("#mClose").addEventListener("click", closeModal);
+  modalBox.querySelector("#edCancel").addEventListener("click", function(){ openDetail(v); });
+  modalBox.querySelector("#edSave").addEventListener("click", function(){ saveEdit(v.dbId); });
+  modalBox.querySelector("#edRevert").addEventListener("click", function(){ revertAll(v.dbId); });
 }
 
 function openUnset(){
@@ -527,14 +658,14 @@ async function loadData(){
   const r1 = await sbClient.from("vehicles").select("*");
   const r2 = await sbClient.from("vehicle_status").select("*");
   if(r1.error){ onErr(r1.error); return; }
-  DATA = (r1.data||[]).map(mapRow);
-  STATUS = {};
-  (r2.data||[]).forEach(function(s){ STATUS[s.db_id]={body:s.body,paint:s.paint,done:s.done,long:s.is_long,prio:s.is_prio}; });
+  STATUS = {}; OVERRIDE = {};
+  (r2.data||[]).forEach(function(s){ STATUS[s.db_id]={body:s.body,paint:s.paint,done:s.done,long:s.is_long,prio:s.is_prio}; OVERRIDE[s.db_id]=ovFrom(s); });
+  DATA = (r1.data||[]).map(mapRow);   // mapRow 안에서 OVERRIDE 를 반영하므로 STATUS·OVERRIDE 먼저 구성
   buildAdvisorFilter(); render();
 }
 function applyStatusChange(p){
-  if(p.eventType==="DELETE"){ if(p.old&&p.old.db_id) delete STATUS[p.old.db_id]; }
-  else if(p.new){ STATUS[p.new.db_id]={body:p.new.body,paint:p.new.paint,done:p.new.done,long:p.new.is_long,prio:p.new.is_prio}; }
+  if(p.eventType==="DELETE"){ var oid=p.old&&p.old.db_id; if(oid){ delete STATUS[oid]; delete OVERRIDE[oid]; var ov=DATA.find(function(x){return x.dbId===oid;}); if(ov) applyOverrides(ov); } }
+  else if(p.new){ var r=p.new; STATUS[r.db_id]={body:r.body,paint:r.paint,done:r.done,long:r.is_long,prio:r.is_prio}; OVERRIDE[r.db_id]=ovFrom(r); var v=DATA.find(function(x){return x.dbId===r.db_id;}); if(v) applyOverrides(v); }
   if(!overlay.classList.contains("show") && Date.now()>=suppressUntil) render();
 }
 function subscribeRealtime(){
@@ -555,18 +686,23 @@ function startVehicleRefresh(){
 /* ── 로그인 ── */
 async function afterLogin(){
   document.getElementById("login").style.display="none";
-  const u = await sbClient.auth.getUser();
-  const uid = u.data.user ? u.data.user.id : null;
-  if(uid){
-    const su = await sbClient.from("shop_users").select("shop_id,role").eq("user_id",uid).maybeSingle();
-    SHOP_ID = su.data ? su.data.shop_id : null;
-    var name = su.data && su.data.role ? "" : "";
-  }
   document.getElementById("board").innerHTML='<div style="padding:30px;color:#888">불러오는 중…</div>';
-  try{ currentAdvisor = localStorage.getItem("wepair_adv") || "전체"; }catch(_){}
-  await loadData();
-  subscribeRealtime();
-  startVehicleRefresh();
+  try{
+    const u = await sbClient.auth.getUser();
+    const uid = u.data.user ? u.data.user.id : null;
+    if(uid){
+      const su = await sbClient.from("shop_users").select("shop_id,role").eq("user_id",uid).maybeSingle();
+      SHOP_ID = su.data ? su.data.shop_id : null;
+    }
+    if(!SHOP_ID){ onErr({message:"이 계정에 연결된 업체가 없습니다. 관리자에게 문의하세요."}); return; }
+    try{ currentAdvisor = localStorage.getItem("wepair_adv") || "전체"; }catch(_){}
+    await loadData();
+    subscribeRealtime();
+    startVehicleRefresh();
+  }catch(err){
+    console.error(err);
+    onErr({message:"불러오기 오류: "+(err&&err.message?err.message:err)+" — 새로고침하거나 다시 로그인해 주세요."});
+  }
 }
 function showLogin(){ document.getElementById("login").style.display="flex"; }
 async function doLogin(){
@@ -600,6 +736,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 </script>
 </body>
