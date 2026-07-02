@@ -2,8 +2,16 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>위페어 주간 출고 현황판</title>
+<!-- PWA (홈 화면에 추가 시 앱처럼 실행) -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#ffffff" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="출고 현황판" />
 <style>
   :root{
     --teal:#2f8f87; --teal-d:#247a72;
@@ -785,6 +793,14 @@ window.addEventListener("DOMContentLoaded", boot);
 
 
 
+</script>
+<script>
+/* 서비스워커 등록 (PWA 설치·오프라인 대비) */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').catch(function(e){ console.warn('SW 등록 실패', e); });
+  });
+}
 </script>
 </body>
 </html>
