@@ -590,9 +590,30 @@ function cardEl(v, compact, sel){
 
 /* ── 모달 ── */
 var overlay, modalBox, lightbox, lbImg;
-function closeModal(){ overlay.classList.remove("show"); }
-function openLightbox(src){ lbImg.classList.remove("zoom"); lbImg.src=src; lightbox.classList.add("show"); }
-function closeLightbox(){ lightbox.classList.remove("show"); }
+/* 뒤로가기(안드로이드 버튼 / iOS 스와이프) 처리 — 히스토리로 층을 관리해 상세는 닫고, 메인은 실수로 종료되지 않게 */
+var STANDALONE = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone===true;
+var boardGuard=false, exitArmed=false, exitTimer=null, backToastEl=null;
+function pushGuard(){ try{ history.pushState({wov:'guard'}, ''); }catch(_){} }
+function showBackToast(){
+  if(!backToastEl){ backToastEl=document.createElement('div');
+    backToastEl.style.cssText='position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));transform:translateX(-50%);background:rgba(28,32,36,.93);color:#fff;padding:10px 18px;border-radius:22px;font-size:14px;z-index:99999;opacity:0;transition:opacity .2s;pointer-events:none;';
+    document.body.appendChild(backToastEl); }
+  backToastEl.textContent='한 번 더 뒤로가면 종료됩니다';
+  backToastEl.style.opacity='1';
+  clearTimeout(backToastEl._t); backToastEl._t=setTimeout(function(){ backToastEl.style.opacity='0'; }, 1600);
+}
+function armExit(){ exitArmed=true; showBackToast(); clearTimeout(exitTimer); exitTimer=setTimeout(function(){ exitArmed=false; if(STANDALONE) pushGuard(); }, 2000); }
+function hideModalDOM(){ overlay.classList.remove("show"); }
+function hideLightboxDOM(){ lightbox.classList.remove("show"); }
+function showOverlay(){ if(!overlay.classList.contains('show')){ try{ history.pushState({wov:'modal'}, ''); }catch(_){} } overlay.classList.add('show'); }
+function closeModal(){ if(overlay.classList.contains("show")){ if(history.state&&history.state.wov==='modal'){ history.back(); } else { hideModalDOM(); } } }
+function openLightbox(src){ if(!lightbox.classList.contains("show")){ try{ history.pushState({wov:'lightbox'}, ''); }catch(_){} } lbImg.classList.remove("zoom"); lbImg.src=src; lightbox.classList.add("show"); }
+function closeLightbox(){ if(lightbox.classList.contains("show")){ if(history.state&&history.state.wov==='lightbox'){ history.back(); } else { hideLightboxDOM(); } } }
+function onPopState(){
+  if(lightbox.classList.contains("show")){ hideLightboxDOM(); return; }   // 사진 확대 → 상세로
+  if(overlay.classList.contains("show")){ hideModalDOM(); return; }        // 상세 → 현황판 메인
+  if(STANDALONE){ if(exitArmed){ return; } armExit(); }                    // 메인 → 한 번 더 눌러야 종료
+}
 function segBtn(track,val,label,cur,dbId){ return '<button class="seg'+(cur===val?' on':'')+'" data-track="'+track+'" data-val="'+val+'" data-id="'+esc(dbId)+'">'+label+'</button>'; }
 var PHONE_SVG="<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z'/></svg>";
 function lrowTel(label,val){ const digits=(val||"").replace(/[^0-9]/g,"");
@@ -637,7 +658,7 @@ function openDetail(v, edit){
   modalBox.querySelectorAll(".seg").forEach(function(b){ b.addEventListener("click", function(){ setStatusExact(b.getAttribute("data-track"), b.getAttribute("data-id"), +b.getAttribute("data-val")); }); });
   var hero=modalBox.querySelector(".hero"); if(hero && v.photo) hero.onerror=function(){ imgErr(hero); };
   modalBox.querySelectorAll(".photos img").forEach(function(im){ im.onerror=function(){ imgErr(im); }; im.addEventListener("click", function(){ openLightbox(im.getAttribute("data-full")); }); });
-  overlay.classList.add("show");
+  showOverlay();
 }
 
 /* ── 정보 수정 폼 (출고일·담당자·연락처·보험·메모) ── */
@@ -679,7 +700,7 @@ function openUnset(){
   modalBox.innerHTML='<div class="mhead"><span class="mt">출고일 미정 차량 ('+list.length+')</span><button class="x" id="mClose">✕</button></div><div class="mbody"><div class="ulist">'+rows+'</div></div>';
   modalBox.querySelector("#mClose").addEventListener("click", closeModal);
   modalBox.querySelectorAll(".urow").forEach(function(rw){ rw.addEventListener("click", function(){ const v=RAW.find(x=>x.dbId===rw.getAttribute("data-id")); if(v) openDetail(v); }); });
-  overlay.classList.add("show");
+  showOverlay();
 }
 
 /* ── 필터 ── */
@@ -751,6 +772,7 @@ async function afterLogin(){
     await loadData();
     subscribeRealtime();
     startVehicleRefresh();
+    if(STANDALONE && !boardGuard){ boardGuard=true; pushGuard(); }   // 메인 진입 시 뒤로가기 방어막 1개 확보
   }catch(err){
     console.error(err);
     onErr({message:"불러오기 오류: "+(err&&err.message?err.message:err)+" — 새로고침하거나 다시 로그인해 주세요."});
@@ -777,6 +799,7 @@ function boot(){
   document.getElementById("lbClose").addEventListener("click", closeLightbox);
   lightbox.addEventListener("click", function(e){ if(e.target===lightbox) closeLightbox(); });
   document.addEventListener("keydown", function(e){ if(e.key==="Escape"){ if(lightbox.classList.contains("show")) closeLightbox(); else closeModal(); } });
+  window.addEventListener("popstate", onPopState);
   document.getElementById("loginBtn").addEventListener("click", doLogin);
   document.getElementById("loginPw").addEventListener("keydown", function(e){ if(e.key==="Enter") doLogin(); });
   var lo=document.getElementById("logoutBtn"); if(lo) lo.addEventListener("click", doLogout);
@@ -788,6 +811,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
