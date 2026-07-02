@@ -276,6 +276,9 @@ body.mode-mywork .titlebar h1{ font-size:20px; }
 .npc{ background:#eef1f4; color:#555; border-radius:12px; padding:1px 9px; font-size:13px; font-weight:600; }
 .npcancel{ margin-top:16px; width:100%; padding:12px; border:0; background:transparent; color:var(--muted); font-size:14px; cursor:pointer; }
 @media (max-width:520px){ .shop{ display:none; } header{ padding:10px 14px; } .wrap{ padding-left:14px; padding-right:14px; } }
+
+.npadmin{ display:flex; justify-content:center; align-items:center; gap:8px; width:100%; margin-top:12px; padding:15px; border:1px solid var(--teal); background:var(--today); color:var(--teal-d); border-radius:12px; font-size:15px; font-weight:800; cursor:pointer; }
+.npadmin .npc{ background:#fff; }
 </style>
 </head>
 <body>
@@ -618,10 +621,16 @@ function mwSection(host, title, list, cls){
 function renderNamePicker(host, cur){
   var names=KNOWN_ADVISORS.filter(function(n){ return RAW.some(function(v){ return v.advisor===n; }); });
   if(!names.length) names=KNOWN_ADVISORS.slice();
-  var btns=names.map(function(n){ var c=DATA.filter(function(v){ return v.advisor===n && !getStatus(v).done; }).length;
+  if(names.indexOf("미분류")<0) names.push("미분류");   // 미분류 담당 선택 추가
+  var cnt=function(pred){ return DATA.filter(function(v){ return pred(v) && !getStatus(v).done; }).length; };
+  var btns=names.map(function(n){ var c=cnt(function(v){ return v.advisor===n; });
     return '<button class="npick" data-n="'+escA(n)+'">'+esc(n)+' <span class="npc">'+c+'</span></button>'; }).join("");
-  host.innerHTML='<div class="nphead">담당자 선택 · 누구세요?</div><div class="npnote">이 기기에 기억해 두고 내 담당 건만 보여드려요. (상단 이름을 눌러 언제든 변경)</div><div class="npgrid">'+btns+'</div>'+(cur?'<button class="npcancel" id="npcancel">취소</button>':"");
-  host.querySelectorAll(".npick").forEach(function(b){ b.addEventListener("click", function(){ pickName=false; setMyName(b.getAttribute("data-n")); }); });
+  var allc=cnt(function(){ return true; });
+  host.innerHTML='<div class="nphead">누구세요?</div><div class="npnote">이 기기에 기억해 두고 내 담당 건만 보여드려요. (상단 이름을 눌러 언제든 변경)</div>'+
+    '<div class="npgrid">'+btns+'</div>'+
+    '<button class="npadmin" data-n="__ALL__">전체 일정 관리 · 관리자 <span class="npc">'+allc+'</span></button>'+
+    (cur?'<button class="npcancel" id="npcancel">취소</button>':"");
+  host.querySelectorAll(".npick,.npadmin").forEach(function(b){ b.addEventListener("click", function(){ pickName=false; setMyName(b.getAttribute("data-n")); }); });
   var cc=host.querySelector("#npcancel"); if(cc) cc.addEventListener("click", function(){ pickName=false; render(); });
 }
 function renderMyWork(){
@@ -629,8 +638,10 @@ function renderMyWork(){
   host.innerHTML="";
   var me=getMyName();
   if(!me || pickName){ renderNamePicker(host, me); return; }
+  var isAll = me==="__ALL__";
+  var meLabel = isAll ? "전체 · 관리자" : esc(me);
   var WD7=["일","월","화","수","목","금","토"];
-  var mine=DATA.filter(function(v){ return v.advisor===me; });
+  var mine = isAll ? DATA.slice() : DATA.filter(function(v){ return v.advisor===me; });
   var days=weekDays(); var dayKeys=days.map(function(d){ return ymd(d); }); var winStart=days[0];
   var cols=days.map(function(){ return []; }); var overdue=[],unset=[],longterm=[],later=[],donerecent=[];
   mine.forEach(function(v){ var s=getStatus(v);
@@ -644,10 +655,10 @@ function renderMyWork(){
   var act=mine.filter(function(v){ return !getStatus(v).done; }).length;
   var ti=dayKeys.indexOf(ymd(BOARD_TODAY)); var today=ti>=0?cols[ti].length:0;
   var bar=document.createElement("div"); bar.className="mysum";
-  bar.innerHTML='<button class="mename" id="mename">'+esc(me)+' ▾</button><span class="mstat">수리중 '+act+' · 오늘 '+today+' · 지연 '+overdue.length+'</span>';
+  bar.innerHTML='<button class="mename" id="mename">'+meLabel+' ▾</button><span class="mstat">수리중 '+act+' · 오늘 '+today+' · 지연 '+overdue.length+'</span>';
   host.appendChild(bar);
   bar.querySelector("#mename").addEventListener("click", function(){ pickName=true; render(); });
-  if(!mine.length){ var e=document.createElement("div"); e.className="mw-empty"; e.textContent="담당 중인 차량이 없습니다."; host.appendChild(e); return; }
+  if(!mine.length){ var e=document.createElement("div"); e.className="mw-empty"; e.textContent=isAll?"표시할 차량이 없습니다.":"담당 중인 차량이 없습니다."; host.appendChild(e); return; }
   var byPrio=function(a,b){ return (getStatus(b).prio-getStatus(a).prio)||a.plate.localeCompare(b.plate); };
   overdue.sort(byPrio); mwSection(host,"지연",overdue,"ov");
   days.forEach(function(d,i){ var isT=ymd(d)===ymd(BOARD_TODAY);
@@ -909,6 +920,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
