@@ -316,6 +316,24 @@ body.mode-location .loc{ display:block; }
 .zcards{ max-height:560px; overflow-y:auto; padding-right:2px; }
 .zcards .card{ width:auto; }
 .zempty{ color:var(--muted); font-size:13px; padding:10px 2px; }
+
+/* 지도 핀 강조(빨강) + 썸네일/대수 + 검색 (v2) */
+.pin{ z-index:1; }
+.pinmark{ position:relative; width:46px; height:46px; border-radius:50%; background:#c0392b; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; }
+.pinmark img{ width:100%; height:100%; border-radius:50%; object-fit:cover; }
+.pinmark.empty{ background:#b6bbc0; }
+.pincnt{ position:absolute; top:-8px; right:-8px; min-width:23px; height:23px; padding:0 5px; border-radius:12px; background:#c0392b; color:#fff; font-size:13px; font-weight:800; display:flex; align-items:center; justify-content:center; border:2px solid #fff; }
+.pinlab{ display:block; margin-top:4px; font-size:13px; font-weight:800; color:#fff; background:#c0392b; padding:2px 9px; border-radius:8px; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,.35); text-align:center; }
+.pin.hit .pinmark{ box-shadow:0 0 0 5px rgba(232,71,61,.5), 0 2px 6px rgba(0,0,0,.35); }
+.pin.hit .pinlab{ background:#e8473d; transform:scale(1.06); }
+.locsearch{ flex:1; min-width:150px; padding:8px 12px; border:1px solid #d6dae0; border-radius:8px; font-size:14px; font-family:inherit; }
+.locresults{ margin:0 0 12px; }
+.locres-h{ font-size:13px; font-weight:800; color:var(--red); margin:2px 2px 8px; }
+.locres-e{ font-size:13px; color:var(--muted); margin:2px; }
+.locres-i{ display:inline-flex; align-items:center; gap:7px; margin:0 8px 8px 0; padding:8px 13px; border:1px solid var(--line); background:#fff; border-radius:20px; cursor:pointer; font-size:13px; }
+.locres-i .pl{ font-weight:800; }
+.locres-i .md{ color:#555; }
+.locres-z{ color:var(--red); font-weight:700; margin-left:2px; }
 </style>
 </head>
 <body>
@@ -749,12 +767,11 @@ function zoneMenu(z){
 function openZonePanel(zid){
   var name = zid ? (zoneName(zid)||"삭제된 구역") : "미지정";
   var list = DATA.filter(function(v){ return (getLoc(v.dbId)||"")===(zid||""); });
-  var rows = list.length ? list.map(function(v){ var ins=isInsured(v.insurance); var st=getStatus(v);
-    return '<div class="urow '+(ins?"ins":"")+'" data-id="'+esc(v.dbId)+'"><span class="bar"></span><span><span class="pl">'+esc(v.plate)+'</span> <span class="md">'+esc(v.model)+'</span><br><span class="md">'+esc(v.advisor)+(st.done?" · 출고완료":"")+'</span></span></div>';
-  }).join("") : '<div class="nophoto">이 구역에 차량이 없습니다.</div>';
-  modalBox.innerHTML='<div class="mhead"><span class="mt">'+esc(name)+' · '+list.length+'대</span><button class="x" id="mClose">✕</button></div><div class="mbody"><div class="ulist">'+rows+'</div></div>';
+  modalBox.innerHTML='<div class="mhead"><span class="mt">'+esc(name)+' · '+list.length+'대</span><button class="x" id="mClose">✕</button></div><div class="mbody" id="zpBody"></div>';
+  var body=modalBox.querySelector("#zpBody");
+  if(!list.length){ body.innerHTML='<div class="nophoto">이 구역에 차량이 없습니다.</div>'; }
+  else list.sort(cmpCard).forEach(function(v){ body.appendChild(cardEl(v, true, null)); });   // 썸네일+번호+차종 카드
   modalBox.querySelector("#mClose").addEventListener("click", closeModal);
-  modalBox.querySelectorAll(".urow").forEach(function(rw){ rw.addEventListener("click", function(){ var v=RAW.find(function(x){return x.dbId===rw.getAttribute("data-id");}); if(v) openDetail(v); }); });
   showOverlay();
 }
 /* 지도 아래: 구역별 차량 리스트(썸네일·번호·차종). 구역마다 최대 높이 안에서 스크롤 → 서로 겹치지 않음 */
@@ -767,6 +784,25 @@ function zoneSection(host, zid, name){
   else list.sort(cmpCard).forEach(function(v){ box.appendChild(cardEl(v, true, null)); });
   sec.appendChild(box); host.appendChild(sec);
 }
+var locQuery="";
+function normStr(s){ return String(s==null?"":s).toLowerCase().replace(/\s+/g,""); }
+function locMatches(){
+  var q=normStr(locQuery); if(!q) return {cars:[], zones:{}};
+  var cars=DATA.filter(function(v){ return normStr(v.plate).indexOf(q)>=0 || normStr(v.model).indexOf(q)>=0; });
+  var zones={}; cars.forEach(function(v){ zones[(getLoc(v.dbId)||"")]=true; });
+  return {cars:cars, zones:zones};
+}
+function locSearchUpdate(){
+  var host=document.getElementById("location"); if(!host) return;
+  var m=locMatches();
+  host.querySelectorAll(".pin").forEach(function(p){ var z=p.getAttribute("data-zone"); p.classList.toggle("hit", !!(locQuery && m.zones[z])); });
+  var rb=host.querySelector("#locResults"); if(!rb) return;
+  if(!locQuery){ rb.innerHTML=""; return; }
+  if(!m.cars.length){ rb.innerHTML='<div class="locres-e">일치하는 차량이 없습니다.</div>'; return; }
+  rb.innerHTML='<div class="locres-h">'+m.cars.length+'대 찾음 · 눌러서 위치 확인</div>'+m.cars.map(function(v){ var zn=getLoc(v.dbId)?(zoneName(getLoc(v.dbId))||"구역"):"미지정";
+    return '<button class="locres-i" data-id="'+escA(v.dbId)+'"><span class="pl">'+esc(v.plate)+'</span> <span class="md">'+esc(v.model)+'</span><span class="locres-z">'+esc(zn)+'</span></button>'; }).join("");
+  rb.querySelectorAll(".locres-i").forEach(function(b){ b.addEventListener("click", function(){ var v=RAW.find(function(x){return x.dbId===b.getAttribute("data-id");}); if(!v) return; var zid=getLoc(v.dbId); if(zid){ var pin=host.querySelector('.pin[data-zone="'+zid+'"]'); if(pin&&pin.scrollIntoView) pin.scrollIntoView({behavior:"smooth",block:"center"}); } openDetail(v); }); });
+}
 function renderLocation(){
   var host=document.getElementById("location"); if(!host) return;
   if(!mapLoaded){ host.innerHTML='<div class="mw-empty">지도 불러오는 중…</div>'; ensureMap().then(function(){ if(getView()==="location") renderLocation(); }); return; }
@@ -774,17 +810,22 @@ function renderLocation(){
   var tb=document.createElement("div"); tb.className="loctb";
   tb.innerHTML='<button class="locbtn" id="locUpload">'+(MAPIMG?"지도 교체":"지도 이미지 업로드")+'</button>'+
     (MAPIMG?'<button class="locbtn'+(zoneEdit?" on":"")+'" id="zoneEditBtn">'+(zoneEdit?"편집 완료":"구역 편집")+'</button>':"")+
+    (MAPIMG?'<input class="locsearch" id="locSearch" type="search" placeholder="차량번호·차종 검색" value="'+escA(locQuery)+'">':"")+
     '<span class="lochint">'+(zoneEdit?"지도를 눌러 구역 추가 · 핀을 눌러 이름수정/삭제":"")+'</span>';
   host.appendChild(tb);
   tb.querySelector("#locUpload").addEventListener("click", pickMapImage);
   var zeb=tb.querySelector("#zoneEditBtn"); if(zeb) zeb.addEventListener("click", function(){ zoneEdit=!zoneEdit; render(); });
   if(!MAPIMG){ var e=document.createElement("div"); e.className="mw-empty"; e.textContent="배경 지도 이미지를 업로드하면 구역 핀을 배치할 수 있어요. (공장·주변 주차장이 담긴 지도 캡처를 올려주세요)"; host.appendChild(e); return; }
+  var rb=document.createElement("div"); rb.className="locresults"; rb.id="locResults"; host.appendChild(rb);
   var wrap=document.createElement("div"); wrap.className="mapwrap"+(zoneEdit?" editing":"");
   var img=document.createElement("img"); img.className="mapimg"; img.src=MAPIMG; wrap.appendChild(img);
-  ZONES.forEach(function(z){ var n=zoneCount(z.id);
-    var pin=document.createElement("div"); pin.className="pin"+(n?" has":""); pin.style.left=(z.x||50)+"%"; pin.style.top=(z.y||50)+"%";
-    pin.innerHTML='<span class="pindot">'+n+'</span><span class="pinlab">'+esc(z.name)+'</span>';
-    pin.addEventListener("click", function(ev){ ev.stopPropagation(); if(zoneEdit){ zoneMenu(z); return; } var el=document.getElementById("zsec-"+z.id); if(el&&el.scrollIntoView) el.scrollIntoView({behavior:"smooth",block:"start"}); });
+  ZONES.forEach(function(z){ var cars=DATA.filter(function(v){ return getLoc(v.dbId)===z.id; }); var n=cars.length;
+    var pin=document.createElement("div"); pin.className="pin"+(n?" has":""); pin.setAttribute("data-zone", z.id);
+    pin.style.left=(z.x||50)+"%"; pin.style.top=(z.y||50)+"%";
+    var thumb=n?(cars[0].photo||PLACEHOLDER):null;
+    pin.innerHTML='<div class="pinmark'+(n?"":" empty")+'">'+(thumb?'<img src="'+thumb+'">':'')+'<span class="pincnt">'+n+'</span></div><div class="pinlab">'+esc(z.name)+'</div>';
+    var th=pin.querySelector(".pinmark img"); if(th&&thumb) th.onerror=function(){ imgErr(th); };
+    pin.addEventListener("click", function(ev){ ev.stopPropagation(); if(zoneEdit){ zoneMenu(z); return; } openZonePanel(z.id); });
     wrap.appendChild(pin);
   });
   if(zoneEdit){ img.addEventListener("click", function(ev){ var r=img.getBoundingClientRect();
@@ -793,6 +834,8 @@ function renderLocation(){
   host.appendChild(wrap);
   ZONES.forEach(function(z){ zoneSection(host, z.id, z.name); });
   zoneSection(host, "", "미지정");
+  var si=tb.querySelector("#locSearch"); if(si){ si.addEventListener("input", function(){ locQuery=si.value; locSearchUpdate(); }); }
+  locSearchUpdate();
 }
 
 function cardEl(v, compact, sel){
@@ -1051,6 +1094,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
