@@ -123,7 +123,7 @@
   .longbtn{width:100%;margin-top:9px;border:1px solid #e0a93f;border-radius:11px;padding:12px;font-size:13.5px;font-weight:800;cursor:pointer;background:#fff7ea;color:#b07000}
   .longbtn:hover{background:#fdefd3}
   .longbtn.on{background:#eef0f1;color:#666;border-color:var(--line)}
-  .priochip{margin-left:auto;font-size:12px;font-weight:800;padding:4px 10px;border-radius:8px;cursor:pointer;border:1px solid #e0a93f;color:#b07000;background:#fff7ea;white-space:nowrap;user-select:none}
+  .priochip{margin-left:auto;font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:7px;cursor:pointer;border:1px solid #e0a93f;color:#b07000;background:#fff7ea;white-space:nowrap;user-select:none}
   .priochip.on{background:#f3a712;color:#fff;border-color:#f3a712}
   .priochip:active{transform:scale(.96)}
   .empty{color:#b6bbc0;font-size:12px;text-align:center;padding:14px 0}
@@ -309,6 +309,13 @@ body.mode-location .loc{ display:block; }
 .zrow.un{ color:var(--muted); }
 .locchip{ font-size:11px; font-weight:700; color:var(--teal-d); background:var(--today); border:1px solid var(--teal); border-radius:10px; padding:1px 7px; }
 .locrow select{ width:100%; padding:10px 11px; border:1px solid #d6dae0; border-radius:8px; font-size:15px; background:#fff; font-family:inherit; }
+
+/* 위치 지도: 구역별 리스트 (썸네일 카드, 최대 높이 스크롤) */
+.zsec{ margin-bottom:16px; }
+.zsec-h{ display:flex; justify-content:space-between; align-items:center; font-weight:800; font-size:15px; margin:0 2px 8px; padding-bottom:6px; border-bottom:2px solid var(--line); }
+.zcards{ max-height:560px; overflow-y:auto; padding-right:2px; }
+.zcards .card{ width:auto; }
+.zempty{ color:var(--muted); font-size:13px; padding:10px 2px; }
 </style>
 </head>
 <body>
@@ -750,6 +757,16 @@ function openZonePanel(zid){
   modalBox.querySelectorAll(".urow").forEach(function(rw){ rw.addEventListener("click", function(){ var v=RAW.find(function(x){return x.dbId===rw.getAttribute("data-id");}); if(v) openDetail(v); }); });
   showOverlay();
 }
+/* 지도 아래: 구역별 차량 리스트(썸네일·번호·차종). 구역마다 최대 높이 안에서 스크롤 → 서로 겹치지 않음 */
+function zoneSection(host, zid, name){
+  var list=DATA.filter(function(v){ return (getLoc(v.dbId)||"")===(zid||""); });
+  var sec=document.createElement("div"); sec.className="zsec"; sec.id="zsec-"+(zid||"none");
+  sec.innerHTML='<div class="zsec-h"><span>'+esc(name)+'</span><span class="mw-c">'+list.length+'</span></div>';
+  var box=document.createElement("div"); box.className="zcards";
+  if(!list.length){ box.innerHTML='<div class="zempty">차량 없음</div>'; }
+  else list.sort(cmpCard).forEach(function(v){ box.appendChild(cardEl(v, true, null)); });
+  sec.appendChild(box); host.appendChild(sec);
+}
 function renderLocation(){
   var host=document.getElementById("location"); if(!host) return;
   if(!mapLoaded){ host.innerHTML='<div class="mw-empty">지도 불러오는 중…</div>'; ensureMap().then(function(){ if(getView()==="location") renderLocation(); }); return; }
@@ -767,18 +784,15 @@ function renderLocation(){
   ZONES.forEach(function(z){ var n=zoneCount(z.id);
     var pin=document.createElement("div"); pin.className="pin"+(n?" has":""); pin.style.left=(z.x||50)+"%"; pin.style.top=(z.y||50)+"%";
     pin.innerHTML='<span class="pindot">'+n+'</span><span class="pinlab">'+esc(z.name)+'</span>';
-    pin.addEventListener("click", function(ev){ ev.stopPropagation(); if(zoneEdit) zoneMenu(z); else openZonePanel(z.id); });
+    pin.addEventListener("click", function(ev){ ev.stopPropagation(); if(zoneEdit){ zoneMenu(z); return; } var el=document.getElementById("zsec-"+z.id); if(el&&el.scrollIntoView) el.scrollIntoView({behavior:"smooth",block:"start"}); });
     wrap.appendChild(pin);
   });
   if(zoneEdit){ img.addEventListener("click", function(ev){ var r=img.getBoundingClientRect();
     var x=Math.round((ev.clientX-r.left)/r.width*1000)/10, y=Math.round((ev.clientY-r.top)/r.height*1000)/10;
     var name=prompt("새 구역 이름 (예: 제1주차장 A열)"); if(name&&name.trim()) addZone(name.trim(), x, y); }); }
   host.appendChild(wrap);
-  var list=document.createElement("div"); list.className="zlist";
-  var rows=ZONES.map(function(z){ return '<button class="zrow" data-z="'+z.id+'"><span>'+esc(z.name)+'</span><span class="mw-c">'+zoneCount(z.id)+'</span></button>'; }).join("");
-  rows+='<button class="zrow un" data-z=""><span>미지정</span><span class="mw-c">'+zoneCount("")+'</span></button>';
-  list.innerHTML=rows; host.appendChild(list);
-  list.querySelectorAll(".zrow").forEach(function(b){ b.addEventListener("click", function(){ openZonePanel(b.getAttribute("data-z")); }); });
+  ZONES.forEach(function(z){ zoneSection(host, z.id, z.name); });
+  zoneSection(host, "", "미지정");
 }
 
 function cardEl(v, compact, sel){
@@ -793,7 +807,7 @@ function cardEl(v, compact, sel){
     chk+'<img class="thumb" src="'+(v.photo||PLACEHOLDER)+'">'+
     '<div class="cinfo">'+
       '<div class="cline">'+star+'<span class="plate">'+esc(v.plate)+'</span><span class="model">'+esc(v.model)+'</span></div>'+
-      '<div class="cbot">'+statusArea+(getLoc(v.dbId)?'<span class="locchip">'+esc(zoneName(getLoc(v.dbId))||"구역")+'</span>':"")+'<span class="adv">'+esc(v.advisor)+'</span></div>'+
+      '<div class="cbot">'+statusArea+((getView()==='mywork'&&getLoc(v.dbId))?'<span class="locchip">'+esc(zoneName(getLoc(v.dbId))||"구역")+'</span>':"")+'<span class="adv">'+esc(v.advisor)+'</span></div>'+
     '</div>';
   var th=el.querySelector(".thumb"); if(th && v.photo) th.onerror=function(){ imgErr(th); };
   if(sel){ el.addEventListener("click",function(){ sel.toggle(v); }); }
@@ -852,7 +866,7 @@ function openDetail(v, edit){
     '<div class="mhead"><span class="mt">차량 상세'+(s.done?" · 출고완료":"")+'</span><button class="x" id="mClose">✕</button></div>'+
     '<div class="mbody">'+
       '<img class="hero" src="'+(v.photo||PLACEHOLDER)+'">'+
-      '<div class="vinfo"><span class="btag '+(ins?"ins":"gen")+'">'+esc(v.insurance||"-")+'</span><span class="pl">'+esc(v.plate)+'</span><span class="md">'+esc(v.model)+'</span>'+colorChip+'<span class="priochip'+(s.prio?" on":"")+'" id="prioBtn">'+(s.prio?"★ 우선작업":"☆ 우선작업")+'</span></div>'+
+      '<div class="vinfo"><span class="btag '+(ins?"ins":"gen")+'">'+esc(v.insurance||"-")+'</span><span class="pl">'+esc(v.plate)+'</span><span class="md">'+esc(v.model)+'</span>'+colorChip+'<span class="priochip'+(s.prio?" on":"")+'" id="prioBtn">'+(s.prio?"★ 우선":"☆ 우선")+'</span></div>'+
       advLine+ editBtnHtml+
       '<button class="shipbtn '+(s.done?"on":"")+'" id="shipBtn">'+(s.done?"↩ 출고 완료 취소":"✓ 출고 완료 처리")+'</button>'+
       (!v.discharge ? '<button class="longbtn '+(s.long?"on":"")+'" id="longBtn">'+(s.long?"↩ 장기건 해제 (미정으로)":"⏳ 장기건(작업대기)으로 이동")+'</button>' : '')+
@@ -1037,6 +1051,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
