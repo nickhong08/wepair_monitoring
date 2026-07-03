@@ -401,6 +401,9 @@ body.mode-location .boardsearch{ display:none; }
 /* 구역 창에서 그 위치로 바로 차량 등록 */
 .zoneadd{ width:100%; margin-bottom:12px; padding:12px; border:0; background:var(--teal); color:#fff; border-radius:9px; font-size:15px; font-weight:800; cursor:pointer; }
 .zoneadd:hover{ background:var(--teal-d); }
+
+/* 기존 차량 위치 이동 버튼 */
+.udbtn.move{ border-color:var(--teal); color:var(--teal-d); }
 </style>
 </head>
 <body>
@@ -900,13 +903,43 @@ function openZonePanel(zid){
   var list = DATA.filter(function(v){ return (getLoc(v.dbId)||"")===(zid||""); });
   modalBox.innerHTML='<div class="mhead"><span class="mt">'+esc(name)+' · '+list.length+'대</span><button class="x" id="mClose">✕</button></div><div class="mbody" id="zpBody"></div>';
   var body=modalBox.querySelector("#zpBody");
-  var addBtn=document.createElement("button"); addBtn.className="zoneadd"; addBtn.textContent="＋ 이 위치에 차량 등록";
-  addBtn.addEventListener("click", function(){ openRegister(zid||""); });
+  var addBtn=document.createElement("button"); addBtn.className="zoneadd"; addBtn.textContent="＋ 이 위치에 차량 추가";
+  addBtn.addEventListener("click", function(){ openZoneAdd(zid||""); });
   body.appendChild(addBtn);
   if(!list.length){ var e=document.createElement("div"); e.className="nophoto"; e.textContent="이 구역에 차량이 없습니다."; body.appendChild(e); }
   else list.sort(cmpCard).forEach(function(v){ body.appendChild(cardEl(v, true, null)); });   // 썸네일+번호+차종 카드
   modalBox.querySelector("#mClose").addEventListener("click", closeModal);
   showOverlay();
+}
+/* 구역에 차량 추가: 새 차량 등록 OR 기존 차량을 이 위치로 이동(검색해서 선택) */
+var zaQuery="";
+function openZoneAdd(zid){
+  var zname = zid ? (zoneName(zid)||"구역") : "미지정";
+  modalBox.innerHTML=
+    '<div class="mhead"><span class="mt">'+esc(zname)+'에 차량 추가</span><button class="x" id="mClose">✕</button></div>'+
+    '<div class="mbody">'+
+      '<button class="zoneadd" id="zaNew">＋ 새 차량 등록 (수기)</button>'+
+      '<div class="udnote">이미 등록된 차량을 이 위치로 옮기려면, 아래에서 차량번호·차종으로 검색해 선택하세요.</div>'+
+      '<input class="udsearch" id="zaSearch" type="search" placeholder="차량번호·차종 검색">'+
+      '<div class="udlist" id="zaList"></div>'+
+    '</div>';
+  modalBox.querySelector("#mClose").addEventListener("click", closeModal);
+  modalBox.querySelector("#zaNew").addEventListener("click", function(){ openRegister(zid||""); });
+  var si=modalBox.querySelector("#zaSearch"); si.addEventListener("input", function(){ zaQuery=si.value; renderZaList(zid); });
+  zaQuery=""; renderZaList(zid);
+  showOverlay();
+}
+function renderZaList(zid){
+  var box=modalBox.querySelector("#zaList"); if(!box) return;
+  var q=normStr(zaQuery);
+  if(!q){ box.innerHTML='<div class="nophoto">차량번호·차종으로 검색해 선택하세요.</div>'; return; }
+  var list=RAW.filter(function(v){ return (normStr(v.plate).indexOf(q)>=0 || normStr(v.model).indexOf(q)>=0) && (getLoc(v.dbId)||"")!==(zid||""); });
+  list.sort(cmpCard); list=list.slice(0,60);
+  box.innerHTML = list.length ? list.map(function(v){ var lz=getLoc(v.dbId); var ln=lz?(zoneName(lz)||"구역"):"미지정";
+    return '<div class="udrow"><img class="udthumb" src="'+(v.photo||PLACEHOLDER)+'"><div class="udinfo"><div class="udtop"><span class="pl">'+esc(v.plate)+'</span> <span class="md">'+esc(v.model)+'</span></div><div class="udmeta">현재 위치: '+esc(ln)+'</div></div><button class="udbtn move" data-id="'+escA(v.dbId)+'">이 위치로</button></div>';
+  }).join("") : '<div class="nophoto">일치하는 차량이 없습니다.</div>';
+  box.querySelectorAll(".udthumb").forEach(function(im){ im.onerror=function(){ imgErr(im); }; });
+  box.querySelectorAll(".udbtn.move").forEach(function(b){ b.addEventListener("click", function(){ setLoc(b.getAttribute("data-id"), zid||null); openZonePanel(zid); }); });
 }
 /* 지도 아래: 구역별 차량 리스트(썸네일·번호·차종). 구역마다 최대 높이 안에서 스크롤 → 서로 겹치지 않음 */
 function zoneSection(host, zid, name){
@@ -1287,6 +1320,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
