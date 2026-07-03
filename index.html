@@ -404,6 +404,11 @@ body.mode-location .boardsearch{ display:none; }
 
 /* 기존 차량 위치 이동 버튼 */
 .udbtn.move{ border-color:var(--teal); color:var(--teal-d); }
+
+/* 위치 목록: 출고완료 차량 제외 ✕ */
+.card.haszx{ position:relative; }
+.zx{ position:absolute; top:6px; right:6px; width:24px; height:24px; border:0; background:rgba(0,0,0,.06); color:#8b9298; border-radius:50%; font-size:12px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.zx:hover{ background:rgba(232,71,61,.15); color:var(--red); }
 </style>
 </head>
 <body>
@@ -907,7 +912,16 @@ function openZonePanel(zid){
   addBtn.addEventListener("click", function(){ openZoneAdd(zid||""); });
   body.appendChild(addBtn);
   if(!list.length){ var e=document.createElement("div"); e.className="nophoto"; e.textContent="이 구역에 차량이 없습니다."; body.appendChild(e); }
-  else list.sort(cmpCard).forEach(function(v){ body.appendChild(cardEl(v, true, null)); });   // 썸네일+번호+차종 카드
+  else list.sort(cmpCard).forEach(function(v){
+    var card=cardEl(v, true, null);
+    if(getStatus(v).done){   // 출고완료 차량만: ✕ 로 위치에서 제외
+      card.classList.add("haszx");
+      var x=document.createElement("button"); x.className="zx"; x.textContent="✕"; x.title="위치에서 제외";
+      x.addEventListener("click", function(e){ e.stopPropagation(); setLoc(v.dbId, null); openZonePanel(zid); });
+      card.appendChild(x);
+    }
+    body.appendChild(card);
+  });
   modalBox.querySelector("#mClose").addEventListener("click", closeModal);
   showOverlay();
 }
@@ -1320,6 +1334,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
