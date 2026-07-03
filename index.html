@@ -350,6 +350,30 @@ body.mode-location .loc{ display:block; }
 .udmeta{ font-size:12px; color:var(--muted); margin-top:3px; }
 .udbtn{ flex:none; padding:8px 14px; border:1px solid var(--red); background:#fff; color:var(--red); border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; }
 @media (max-width:520px){ .undobtn{ font-size:0; padding:7px 9px; } .undobtn::before{ content:"↩"; font-size:15px; } }
+
+/* 되돌리기 목록 검색 */
+.udsearch{ width:100%; padding:9px 12px; border:1px solid #d6dae0; border-radius:8px; font-size:14px; font-family:inherit; margin-bottom:10px; box-sizing:border-box; }
+/* 대시보드 카드 축소 */
+.kpi{ padding:11px 16px; min-width:120px; }
+.kpi .n, .n{ font-size:22px; }
+.kpi .l, .l{ font-size:12px; }
+.summary{ gap:8px; margin-bottom:16px; }
+/* 헤더 정리 (모바일에서 안 잘리게) */
+@media (max-width:640px){
+  header{ padding:9px 12px; }
+  .logo{ height:22px; }
+  .right-controls{ gap:6px; }
+  .segv{ padding:6px 9px; font-size:12px; }
+  .shop{ display:none; }
+  .logoutbtn{ padding:6px 8px; font-size:0; white-space:nowrap; }
+  .logoutbtn::before{ content:"\2718"; font-size:14px; }
+  .undobtn{ font-size:0; padding:6px 8px; }
+  .undobtn::before{ content:"\21A9"; font-size:15px; }
+  .summary{ display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
+  .kpi{ padding:9px 11px; min-width:0; }
+  .kpi .n, .n{ font-size:20px; }
+  .kpi .l, .l{ font-size:11px; line-height:1.25; }
+}
 </style>
 </head>
 <body>
@@ -590,21 +614,30 @@ function undoBatch(ids){
   render();
   if(rows.length) sbClient.from("vehicle_status").upsert(rows,{onConflict:"db_id"}).then(function(res){ if(res.error) saveErr(res.error); });
 }
-function undoDone(dbId){ var v=RAW.find(function(x){return x.dbId===dbId;}); if(!v) return; var s=getStatus(v); s.done=false; s.updated_at=new Date().toISOString(); STATUS[dbId]=s; suppressUntil=Date.now()+6000; render(); persist(v); openUndoDone(); }
+function undoDone(dbId){ var v=RAW.find(function(x){return x.dbId===dbId;}); if(!v) return; var s=getStatus(v); s.done=false; s.updated_at=new Date().toISOString(); STATUS[dbId]=s; suppressUntil=Date.now()+6000; render(); persist(v); renderUndoList(); }
 function timeAgo(iso){ if(!iso) return ""; var t=new Date(iso).getTime(); if(!t) return ""; var m=Math.floor((Date.now()-t)/60000);
   if(m<1) return "방금"; if(m<60) return m+"분 전"; var h=Math.floor(m/60); if(h<24) return h+"시간 전"; var d=Math.floor(h/24); return d+"일 전"; }
+var undoQuery="";
 function openUndoDone(){
+  undoQuery="";
+  modalBox.innerHTML='<div class="mhead"><span class="mt">최근 출고완료 · 되돌리기</span><button class="x" id="mClose">✕</button></div><div class="mbody"><input class="udsearch" id="udSearch" type="search" placeholder="차량번호·차종 검색"><div class="udnote">잘못 처리된 차량을 눌러 되돌리세요. 되돌리면 다시 목록에 나타납니다.</div><div class="udlist" id="udList"></div></div>';
+  modalBox.querySelector("#mClose").addEventListener("click", closeModal);
+  var si=modalBox.querySelector("#udSearch"); si.addEventListener("input", function(){ undoQuery=si.value; renderUndoList(); });
+  renderUndoList();
+  showOverlay();
+}
+function renderUndoList(){
+  var box=modalBox.querySelector("#udList"); if(!box) return;
+  var q=normStr(undoQuery);
   var list=RAW.filter(function(v){ return getStatus(v).done; });
+  if(q) list=list.filter(function(v){ return normStr(v.plate).indexOf(q)>=0 || normStr(v.model).indexOf(q)>=0; });
   list.sort(function(a,b){ return String((STATUS[b.dbId]||{}).updated_at||"").localeCompare(String((STATUS[a.dbId]||{}).updated_at||"")); });
   list=list.slice(0,80);
-  var rows=list.length ? list.map(function(v){ var st=getStatus(v);
-    return '<div class="udrow"><img class="udthumb" src="'+(v.photo||PLACEHOLDER)+'" data-full="'+esc(v.dbId)+'"><div class="udinfo"><div class="udtop"><span class="pl">'+esc(v.plate)+'</span> <span class="md">'+esc(v.model)+'</span></div><div class="udmeta">'+esc(v.advisor)+' · '+timeAgo(st.updated_at)+'</div></div><button class="udbtn" data-id="'+escA(v.dbId)+'">되돌리기</button></div>';
-  }).join("") : '<div class="nophoto">최근 출고완료된 차량이 없습니다.</div>';
-  modalBox.innerHTML='<div class="mhead"><span class="mt">최근 출고완료 · 되돌리기</span><button class="x" id="mClose">✕</button></div><div class="mbody"><div class="udnote">잘못 처리된 차량을 눌러 되돌리세요. 되돌리면 다시 목록에 나타납니다.</div><div class="udlist">'+rows+'</div></div>';
-  modalBox.querySelector("#mClose").addEventListener("click", closeModal);
-  modalBox.querySelectorAll(".udthumb").forEach(function(im){ im.onerror=function(){ imgErr(im); }; });
-  modalBox.querySelectorAll(".udbtn").forEach(function(b){ b.addEventListener("click", function(){ undoDone(b.getAttribute("data-id")); }); });
-  showOverlay();
+  box.innerHTML = list.length ? list.map(function(v){ var st=getStatus(v);
+    return '<div class="udrow"><img class="udthumb" src="'+(v.photo||PLACEHOLDER)+'"><div class="udinfo"><div class="udtop"><span class="pl">'+esc(v.plate)+'</span> <span class="md">'+esc(v.model)+'</span></div><div class="udmeta">'+esc(v.advisor)+' · '+timeAgo(st.updated_at)+'</div></div><button class="udbtn" data-id="'+escA(v.dbId)+'">되돌리기</button></div>';
+  }).join("") : '<div class="nophoto">'+(q?"검색 결과가 없습니다.":"최근 출고완료된 차량이 없습니다.")+'</div>';
+  box.querySelectorAll(".udthumb").forEach(function(im){ im.onerror=function(){ imgErr(im); }; });
+  box.querySelectorAll(".udbtn").forEach(function(b){ b.addEventListener("click", function(){ undoDone(b.getAttribute("data-id")); }); });
 }
 function processSelected(undone,label){
   var pick=undone.filter(function(v){ return selected.has(idOf(v)); });
@@ -1147,6 +1180,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
