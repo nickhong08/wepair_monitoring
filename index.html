@@ -397,6 +397,10 @@ body.mode-location .boardsearch{ display:none; }
 .srchbar{ font-size:13px; font-weight:800; color:var(--muted); margin:2px 2px 12px; }
 .srchlist{ display:flex; flex-direction:column; gap:8px; }
 .srchlist .card{ width:auto; }
+
+/* 구역 창에서 그 위치로 바로 차량 등록 */
+.zoneadd{ width:100%; margin-bottom:12px; padding:12px; border:0; background:var(--teal); color:#fff; border-radius:9px; font-size:15px; font-weight:800; cursor:pointer; }
+.zoneadd:hover{ background:var(--teal-d); }
 </style>
 </head>
 <body>
@@ -896,7 +900,10 @@ function openZonePanel(zid){
   var list = DATA.filter(function(v){ return (getLoc(v.dbId)||"")===(zid||""); });
   modalBox.innerHTML='<div class="mhead"><span class="mt">'+esc(name)+' · '+list.length+'대</span><button class="x" id="mClose">✕</button></div><div class="mbody" id="zpBody"></div>';
   var body=modalBox.querySelector("#zpBody");
-  if(!list.length){ body.innerHTML='<div class="nophoto">이 구역에 차량이 없습니다.</div>'; }
+  var addBtn=document.createElement("button"); addBtn.className="zoneadd"; addBtn.textContent="＋ 이 위치에 차량 등록";
+  addBtn.addEventListener("click", function(){ openRegister(zid||""); });
+  body.appendChild(addBtn);
+  if(!list.length){ var e=document.createElement("div"); e.className="nophoto"; e.textContent="이 구역에 차량이 없습니다."; body.appendChild(e); }
   else list.sort(cmpCard).forEach(function(v){ body.appendChild(cardEl(v, true, null)); });   // 썸네일+번호+차종 카드
   modalBox.querySelector("#mClose").addEventListener("click", closeModal);
   showOverlay();
@@ -1072,10 +1079,10 @@ function openDetail(v, edit){
 /* ── 수동 차량 등록 / 삭제 (작업지시서 전, 위페어 미등록 차량) ── */
 var regPhoto=null;
 function isManual(v){ return v && v.dbId && String(v.dbId).indexOf("manual-")===0; }
-function openRegister(){
+function openRegister(presetZone){
   regPhoto=null;
   var today=ymd(BOARD_TODAY);
-  var zopts='<option value="">미지정</option>'+ZONES.map(function(z){ return '<option value="'+z.id+'">'+esc(z.name)+'</option>'; }).join("");
+  var zopts='<option value=""'+(!presetZone?" selected":"")+'>미지정</option>'+ZONES.map(function(z){ return '<option value="'+z.id+'"'+(z.id===presetZone?" selected":"")+'>'+esc(z.name)+'</option>'; }).join("");
   modalBox.innerHTML=
     '<div class="mhead"><span class="mt">차량 등록 (수동)</span><button class="x" id="mClose">✕</button></div>'+
     '<div class="mbody">'+
@@ -1280,6 +1287,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
