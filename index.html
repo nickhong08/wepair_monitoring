@@ -392,6 +392,11 @@ body.mode-location .loc{ display:block; }
 .moremenu .mm:hover{ background:#f0f2f5; }
 .boardsearch{ flex:1; min-width:160px; padding:8px 12px; border:1px solid #d6dae0; border-radius:8px; font-size:14px; font-family:inherit; }
 body.mode-location .boardsearch{ display:none; }
+
+/* 전체 검색 결과 */
+.srchbar{ font-size:13px; font-weight:800; color:var(--muted); margin:2px 2px 12px; }
+.srchlist{ display:flex; flex-direction:column; gap:8px; }
+.srchlist .card{ width:auto; }
 </style>
 </head>
 <body>
@@ -700,9 +705,24 @@ function getMyName(){ try{ return localStorage.getItem('wepair_me')||null; }catc
 function setMyName(n){ try{ localStorage.setItem('wepair_me', n); }catch(_){} render(); }
 function weekDays(){ var days=[]; var c=new Date(BOARD_TODAY); c.setDate(c.getDate()-1); while(days.length<6){ if(c.getDay()!==0) days.push(new Date(c)); c.setDate(c.getDate()+1); } return days; }
 
+/* 검색 결과 = 필터와 무관하게 사본(RAW) 전체에서 번호·차종으로 찾기 (오래돼 빠진 차도 노출) */
+function renderSearchInto(host){
+  if(!host) return;
+  var q=normStr(searchQuery);
+  var list=RAW.filter(function(v){ return normStr(v.plate).indexOf(q)>=0 || normStr(v.model).indexOf(q)>=0; });
+  list.sort(cmpCard);
+  host.innerHTML="";
+  var bar=document.createElement("div"); bar.className="srchbar"; bar.textContent='검색 결과 '+list.length+'대 · "'+searchQuery+'" (전체 차량)';
+  host.appendChild(bar);
+  if(!list.length){ var e=document.createElement("div"); e.className="mw-empty"; e.textContent="일치하는 차량이 없습니다. (사본에 없으면 ‘⋯ → 차량 등록’으로 추가)"; host.appendChild(e); return; }
+  var box=document.createElement("div"); box.className="srchlist";
+  list.forEach(function(v){ box.appendChild(cardEl(v, true, null)); });
+  host.appendChild(box);
+}
 /* ── 렌더 (화면에 따라 분기) ── */
 function render(){ applyViewChrome(); rebuildData(); var v=getView(); if(v==='mywork') renderMyWork(); else if(v==='location') renderLocation(); else renderBoard(); }
 function renderBoard(){
+  if(normStr(searchQuery)){ var sm=document.getElementById("summary"); if(sm) sm.innerHTML=""; renderSearchInto(document.getElementById("board")); return; }
   const WD7=["일","월","화","수","목","금","토"];
   const days=[]; { const c=new Date(BOARD_TODAY); c.setDate(c.getDate()-1); while(days.length<6){ if(c.getDay()!==0) days.push(new Date(c)); c.setDate(c.getDate()+1); } }
   const winStart=days[0]; const dayKeys=days.map(d=>ymd(d));
@@ -805,6 +825,7 @@ function renderNamePicker(host, cur){
 function renderMyWork(){
   var host=document.getElementById("mywork"); if(!host) return;
   host.innerHTML="";
+  if(normStr(searchQuery)){ renderSearchInto(host); return; }
   var me=getMyName();
   if(!me || pickName){ renderNamePicker(host, me); return; }
   var isAll = me==="__ALL__";
@@ -1259,6 +1280,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
