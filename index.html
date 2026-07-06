@@ -1348,7 +1348,7 @@ function renderLoaner(){
 /* 과도기용: 카톡 공유 텍스트 생성/복사 */
 function loanerLine(l){
   var loc = (l.status==="대기") ? (l.zone_id?(zoneName(l.zone_id)||""):"") : (l.status==="대여중" ? (l.location||"") : "");
-  var head = (l.is_ev?"⚡":"") + (l.model||"") + " " + l.plate + (loc?(" ("+loc+")"):"");
+  var head = (l.model||"") + " " + l.plate + (loc?(" ("+loc+")"):"");
   var rhs;
   if(l.status==="대여중") rhs = " = " + (l.target_text||"") + (l.handler?(" ("+l.handler+")"):"");
   else if(l.status==="예약중") rhs = " = " + (l.target_text||"") + " 예약" + (l.reserved_by?("("+l.reserved_by+")"):"");
@@ -1357,11 +1357,14 @@ function loanerLine(l){
   return head + rhs;
 }
 function loanerShareText(){
-  var order={"대기":0,"대여중":1,"예약중":2};
-  var arr=LOANERS.slice().sort(function(a,b){ var oa=order[a.status||"대기"]||0, ob=order[b.status||"대기"]||0; if(oa!==ob) return oa-ob; return String(a.plate).localeCompare(String(b.plate)); });
+  function cmp(a,b){ var m=String(a.model||"").localeCompare(String(b.model||"")); return m!==0?m:String(a.plate).localeCompare(String(b.plate)); }
+  var gen=LOANERS.filter(function(l){ return !l.is_ev; }).sort(cmp);
+  var ev=LOANERS.filter(function(l){ return l.is_ev; }).sort(cmp);
   var d=new Date(); var stamp=(d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
-  var lines=arr.map(function(l,i){ return (i+1)+"."+loanerLine(l); });
-  return "🚗 공장대차 현황 ("+stamp+" 기준)\n\n"+(lines.length?lines.join("\n"):"등록된 대차가 없습니다.");
+  var out="🚗 공장대차 현황 ("+stamp+" 기준)\n\n";
+  out += gen.length ? gen.map(function(l,i){ return (i+1)+"."+loanerLine(l); }).join("\n") : "등록된 대차가 없습니다.";
+  if(ev.length){ out += "\n\n**전기차**\n" + ev.map(function(l,i){ return (i+1)+"."+loanerLine(l); }).join("\n"); }
+  return out;
 }
 function openLoanerShare(){
   var txt=loanerShareText();
@@ -1612,6 +1615,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
