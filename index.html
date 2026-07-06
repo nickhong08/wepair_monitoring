@@ -452,6 +452,10 @@ body.mode-loaner .loaner{ display:block; }
 
 /* 카톡 공유 텍스트 박스 */
 .sharebox{ width:100%; padding:11px; border:1px solid #d6dae0; border-radius:8px; font-size:13px; font-family:inherit; line-height:1.6; box-sizing:border-box; resize:vertical; }
+
+/* 대차 카드: 차종 강조, 차량번호 보조 */
+.lomodel{ font-size:16px; font-weight:800; color:#1c2024; }
+.loplate{ font-size:13px; font-weight:700; color:#8b9298; }
 </style>
 </head>
 <body>
@@ -1295,7 +1299,7 @@ function loanerCard(l, tag){
   var st=l.status||"대기"; var bcls = st==="대여중"?"out":st==="예약중"?"rsv":"idle";
   var el=document.createElement("div"); el.className="card loanercard"; var sub=loanerSub(l);
   el.innerHTML='<img class="thumb" src="'+(l.photo||PLACEHOLDER)+'"><div class="cinfo">'+
-    '<div class="cline">'+(tag?'<span class="lotag">대차</span>':'')+(l.is_ev?'<span class="evtag">⚡</span>':'')+'<span class="plate">'+esc(l.plate)+'</span><span class="model">'+esc(l.model||"")+'</span></div>'+
+    '<div class="cline">'+(tag?'<span class="lotag">대차</span>':'')+(l.is_ev?'<span class="evtag">⚡</span>':'')+'<span class="lomodel">'+esc(l.model||"")+'</span><span class="loplate">'+esc(l.plate)+'</span></div>'+
     '<div class="cbot"><span class="lbadge '+bcls+'">'+st+'</span>'+(sub?'<span class="lsub">'+esc(sub)+'</span>':'')+'</div>'+
     (l.updated_at?'<div class="lupd">'+esc(l.updated_by||"")+' · '+timeAgo(l.updated_at)+'</div>':'')+
   '</div>';
@@ -1415,7 +1419,7 @@ function addLoaner(){
 function openLoanerEdit(l){
   lnStatusSel = l.status || "대기"; loanerEditInfo=false; loanerPhoto=null;
   modalBox.innerHTML=
-    '<div class="mhead"><span class="mt">대차 · '+esc(l.plate)+'</span><button class="x" id="mClose">✕</button></div>'+
+    '<div class="mhead"><span class="mt">대차 · '+esc(l.model||l.plate)+'</span><button class="x" id="mClose">✕</button></div>'+
     '<div class="mbody">'+
       '<div id="lnInfo"></div>'+
       '<div class="grp"><div class="grp-t">상태</div><div class="lnseg" id="lnSeg">'+
@@ -1436,7 +1440,7 @@ function openLoanerEdit(l){
 function renderLnInfo(l){
   var box=modalBox.querySelector("#lnInfo"); if(!box) return;
   if(!loanerEditInfo){
-    box.innerHTML='<div class="vinfo"><span class="pl">'+esc(l.plate)+'</span><span class="md">'+esc(l.model||"")+'</span>'+(l.is_ev?'<span class="evtag">⚡전기</span>':'')+'<button class="editinfo" id="lnEditInfo">✎ 정보 수정</button></div>';
+    box.innerHTML='<div class="vinfo"><span class="lomodel">'+esc(l.model||"")+'</span><span class="loplate">'+esc(l.plate)+'</span>'+(l.is_ev?'<span class="evtag">⚡전기</span>':'')+'<button class="editinfo" id="lnEditInfo">✎ 정보 수정</button></div>';
     var b=box.querySelector("#lnEditInfo"); if(b) b.addEventListener("click", function(){ loanerEditInfo=true; loanerPhoto=null; renderLnInfo(l); });
   } else {
     box.innerHTML='<div class="grp"><div class="grp-t">기본 정보 수정</div><div class="edform">'+
@@ -1620,6 +1624,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
