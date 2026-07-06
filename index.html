@@ -449,6 +449,9 @@ body.mode-loaner .loaner{ display:block; }
 /* 지도/구역에 표시되는 대차 태그 */
 .lotag{ font-size:11px; font-weight:800; color:#fff; background:#7a869a; border-radius:8px; padding:1px 6px; margin-right:3px; }
 .edrow.stk{ gap:6px; } .edrow.stk .edk{ margin-bottom:2px; } .edrow.stk .combo,.edrow.stk input,.edrow.stk select,.edrow.stk textarea{ width:100%; }
+
+/* 카톡 공유 텍스트 박스 */
+.sharebox{ width:100%; padding:11px; border:1px solid #d6dae0; border-radius:8px; font-size:13px; font-family:inherit; line-height:1.6; box-sizing:border-box; resize:vertical; }
 </style>
 </head>
 <body>
@@ -1329,6 +1332,7 @@ function renderLoaner(){
   host.innerHTML="";
   var tb=document.createElement("div"); tb.className="loctb";
   tb.innerHTML='<button class="locbtn on" id="lnAdd">＋ 대차 등록</button>'+
+    '<button class="locbtn" id="lnShare">📋 카톡 복사</button>'+
     '<input class="locsearch" id="lnSearch" type="search" placeholder="번호·차종 검색" value="'+escA(loanerQuery)+'">';
   host.appendChild(tb);
   var fl=document.createElement("div"); fl.className="lnfilter";
@@ -1338,7 +1342,43 @@ function renderLoaner(){
   var body=document.createElement("div"); body.id="lnBody"; host.appendChild(body);
   renderLnList();
   tb.querySelector("#lnAdd").addEventListener("click", openLoanerNew);
+  var shb=tb.querySelector("#lnShare"); if(shb) shb.addEventListener("click", openLoanerShare);
   var si=tb.querySelector("#lnSearch"); si.addEventListener("input", function(){ loanerQuery=si.value; renderLnList(); });
+}
+/* 과도기용: 카톡 공유 텍스트 생성/복사 */
+function loanerLine(l){
+  var loc = (l.status==="대기") ? (l.zone_id?(zoneName(l.zone_id)||""):"") : (l.status==="대여중" ? (l.location||"") : "");
+  var head = (l.is_ev?"⚡":"") + (l.model||"") + " " + l.plate + (loc?(" ("+loc+")"):"");
+  var rhs;
+  if(l.status==="대여중") rhs = " = " + (l.target_text||"") + (l.handler?(" ("+l.handler+")"):"");
+  else if(l.status==="예약중") rhs = " = " + (l.target_text||"") + " 예약" + (l.reserved_by?("("+l.reserved_by+")"):"");
+  else rhs = " = 대기";
+  if(l.memo) rhs += " / " + l.memo;
+  return head + rhs;
+}
+function loanerShareText(){
+  var order={"대기":0,"대여중":1,"예약중":2};
+  var arr=LOANERS.slice().sort(function(a,b){ var oa=order[a.status||"대기"]||0, ob=order[b.status||"대기"]||0; if(oa!==ob) return oa-ob; return String(a.plate).localeCompare(String(b.plate)); });
+  var d=new Date(); var stamp=(d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+  var lines=arr.map(function(l,i){ return (i+1)+"."+loanerLine(l); });
+  return "🚗 공장대차 현황 ("+stamp+" 기준)\n\n"+(lines.length?lines.join("\n"):"등록된 대차가 없습니다.");
+}
+function openLoanerShare(){
+  var txt=loanerShareText();
+  modalBox.innerHTML='<div class="mhead"><span class="mt">카톡 공유용 텍스트</span><button class="x" id="mClose">✕</button></div>'+
+    '<div class="mbody"><div class="udnote">아래 내용을 복사해 카톡에 붙여넣으세요. (과도기용 임시 기능)</div>'+
+    '<textarea id="shareTxt" class="sharebox" rows="16" readonly>'+esc(txt)+'</textarea>'+
+    '<div class="edbtns"><button class="edcancel" id="shClose">닫기</button><button class="edsave" id="shCopy">복사</button></div></div>';
+  modalBox.querySelector("#mClose").addEventListener("click", closeModal);
+  modalBox.querySelector("#shClose").addEventListener("click", closeModal);
+  modalBox.querySelector("#shCopy").addEventListener("click", function(){
+    var ta=modalBox.querySelector("#shareTxt"); try{ ta.focus(); ta.select(); }catch(_){}
+    function done(){ alert("복사됐어요. 카톡에 붙여넣으세요."); }
+    function manual(){ alert("텍스트를 길게 눌러 복사해 주세요."); }
+    if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(done).catch(function(){ try{ document.execCommand("copy"); done(); }catch(e){ manual(); } }); }
+    else { try{ document.execCommand("copy"); done(); }catch(e){ manual(); } }
+  });
+  showOverlay();
 }
 function openLoanerNew(){
   loanerPhoto=null;
@@ -1572,6 +1612,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
