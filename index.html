@@ -409,6 +409,30 @@ body.mode-location .boardsearch{ display:none; }
 .card.haszx{ position:relative; }
 .zx{ position:absolute; top:6px; right:6px; width:24px; height:24px; border:0; background:rgba(0,0,0,.06); color:#8b9298; border-radius:50%; font-size:12px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; }
 .zx:hover{ background:rgba(232,71,61,.15); color:var(--red); }
+
+/* 공장대차 화면 */
+.loaner{ display:none; }
+body.mode-loaner .controls, body.mode-loaner .summary, body.mode-loaner .board, body.mode-loaner .mywork, body.mode-loaner .loc, body.mode-loaner .titlebar .range, body.mode-loaner .boardsearch{ display:none; }
+body.mode-loaner .loaner{ display:block; }
+.lbadge{ font-size:11px; font-weight:800; padding:2px 8px; border-radius:10px; }
+.lbadge.idle{ background:#e8f5ee; color:#1d8a45; }
+.lbadge.rsv{ background:#e8eefe; color:#2563eb; }
+.lbadge.out{ background:#fdecdd; color:#c8791e; }
+.evtag{ font-size:11px; font-weight:800; color:#0a7ea4; background:#e0f4fa; border-radius:8px; padding:1px 6px; margin-right:3px; }
+.lsub{ font-size:12px; color:#666; }
+.lupd{ font-size:11px; color:var(--muted); margin-top:4px; }
+.loanercard .thumb{ width:54px; height:46px; }
+.lnfilter{ display:flex; gap:6px; margin:0 0 12px; }
+.lnfb{ padding:6px 12px; border:1px solid var(--line); background:#fff; border-radius:16px; font-size:13px; font-weight:700; color:#555; cursor:pointer; }
+.lnfb.on{ background:var(--teal); color:#fff; border-color:var(--teal); }
+.lnseg{ display:inline-flex; border:1px solid #d6dae0; border-radius:9px; overflow:hidden; }
+.lnsegb{ padding:9px 16px; border:0; background:#fff; color:#555; font-size:14px; font-weight:700; cursor:pointer; border-left:1px solid #eceef0; }
+.lnsegb:first-child{ border-left:0; }
+.lnsegb.on{ background:var(--teal); color:#fff; }
+.locpre{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.locprebtn{ padding:6px 11px; border:1px solid var(--line); background:#f7f8fa; border-radius:14px; font-size:13px; cursor:pointer; }
+.lnmemo{ width:100%; padding:9px 11px; border:1px solid #d6dae0; border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box; }
+.lnidle{ color:var(--muted); font-size:13px; padding:6px 2px 2px; }
 </style>
 </head>
 <body>
@@ -440,6 +464,7 @@ body.mode-location .boardsearch{ display:none; }
   <div class="board" id="board"></div>
   <div class="mywork" id="mywork"></div>
   <div class="loc" id="location"></div>
+  <div class="loaner" id="loaner"></div>
   <footer id="foot"></footer>
 </div>
 
@@ -516,6 +541,7 @@ let RAW=[]; let DATA=[]; let STATUS={}; let OVERRIDE={}; let currentAdvisor="전
 /* RAW = 표에서 불러온 전체 차량, DATA = 현황판에 실제로 담을 대상(수리중 + 최근 출고완료)만 걸러낸 것 */
 let ZONES=[]; let ZMAP={}; let LOCS={};            // 구역 목록 / id→구역 / 차량id→구역id
 var MAPIMG=null, mapLoaded=false, zoneEdit=false;  // 배경 지도 이미지 / 로드여부 / 구역편집 모드
+let LOANERS=[]; var loanerQuery="", loanerFilter="전체", loanerPhoto=null, lnStatusSel="대기";   // 공장대차
 
 /* ── 작업 상태 ── */
 function defaultStatus(v){ let st={body:0,paint:0,done:false,long:false,prio:false};
@@ -709,8 +735,9 @@ function setView(v){ VIEW=v; try{ localStorage.setItem('wepair_view', v); }catch
 function applyViewChrome(){ var v=getView();
   document.body.classList.toggle('mode-mywork', v==='mywork');
   document.body.classList.toggle('mode-location', v==='location');
+  document.body.classList.toggle('mode-loaner', v==='loaner');
   var seg=document.getElementById('viewSeg');
-  if(seg){ var defs=[['board','현황판'],['mywork','내 작업'],['location','위치']];
+  if(seg){ var defs=[['board','현황판'],['mywork','내 작업'],['location','위치'],['loaner','대차']];
     seg.innerHTML=defs.map(function(d){ return '<button class="segv'+(v===d[0]?' on':'')+'" data-v="'+d[0]+'">'+d[1]+'</button>'; }).join('');
     seg.querySelectorAll('.segv').forEach(function(b){ b.addEventListener('click', function(){ setView(b.getAttribute('data-v')); }); }); } }
 function getMyName(){ try{ return localStorage.getItem('wepair_me')||null; }catch(_){ return null; } }
@@ -732,7 +759,7 @@ function renderSearchInto(host){
   host.appendChild(box);
 }
 /* ── 렌더 (화면에 따라 분기) ── */
-function render(){ applyViewChrome(); rebuildData(); var v=getView(); if(v==='mywork') renderMyWork(); else if(v==='location') renderLocation(); else renderBoard(); }
+function render(){ applyViewChrome(); rebuildData(); var v=getView(); if(v==='mywork') renderMyWork(); else if(v==='location') renderLocation(); else if(v==='loaner') renderLoaner(); else renderBoard(); }
 function renderBoard(){
   if(normStr(searchQuery)){ var sm=document.getElementById("summary"); if(sm) sm.innerHTML=""; renderSearchInto(document.getElementById("board")); return; }
   const WD7=["일","월","화","수","목","금","토"];
@@ -1228,6 +1255,155 @@ function buildAdvisorFilter(){
   sel.onchange=function(e){ currentAdvisor=e.target.value; try{ localStorage.setItem("wepair_adv", currentAdvisor); }catch(_){} render(); };
 }
 
+/* ── 공장대차 관리 ── */
+function currentActor(){ var n=getMyName(); if(n && n!=="__ALL__") return n; var t=prompt("기록용 이름을 입력하세요"); if(t&&t.trim()){ try{ localStorage.setItem("wepair_me", t.trim()); }catch(_){} return t.trim(); } return "관리자"; }
+function pickPhoto(cb){
+  var inp=document.createElement("input"); inp.type="file"; inp.accept="image/*";
+  inp.onchange=function(){ var f=inp.files&&inp.files[0]; if(!f) return; var rd=new FileReader();
+    rd.onload=function(){ var img=new Image(); img.onload=function(){ var max=1000,w=img.width,h=img.height; if(w>max){ h=Math.round(h*max/w); w=max; } var cv=document.createElement("canvas"); cv.width=w; cv.height=h; cv.getContext("2d").drawImage(img,0,0,w,h); cb(cv.toDataURL("image/jpeg",0.8)); }; img.src=rd.result; }; rd.readAsDataURL(f); };
+  inp.click();
+}
+function loanerSub(l){
+  if(l.status==="대여중"){ return (l.target_text?("→ "+l.target_text):"") + (l.location?(" · "+l.location):""); }
+  if(l.status==="예약중"){ return "예약 · "+(l.reserved_by||"-")+" · "+timeAgo(l.reserved_at); }
+  return "";
+}
+function loanerCard(l){
+  var st=l.status||"대기"; var bcls = st==="대여중"?"out":st==="예약중"?"rsv":"idle";
+  var el=document.createElement("div"); el.className="card loanercard"; var sub=loanerSub(l);
+  el.innerHTML='<img class="thumb" src="'+(l.photo||PLACEHOLDER)+'"><div class="cinfo">'+
+    '<div class="cline">'+(l.is_ev?'<span class="evtag">⚡</span>':'')+'<span class="plate">'+esc(l.plate)+'</span><span class="model">'+esc(l.model||"")+'</span></div>'+
+    '<div class="cbot"><span class="lbadge '+bcls+'">'+st+'</span>'+(sub?'<span class="lsub">'+esc(sub)+'</span>':'')+'</div>'+
+    (l.updated_at?'<div class="lupd">'+esc(l.updated_by||"")+' · '+timeAgo(l.updated_at)+'</div>':'')+
+  '</div>';
+  var th=el.querySelector(".thumb"); if(th&&l.photo) th.onerror=function(){ imgErr(th); };
+  el.addEventListener("click", function(){ openLoanerEdit(l); });
+  return el;
+}
+function lnSection(host,title,arr,cls){
+  var sec=document.createElement("div"); sec.className="mw-sec"+(cls?(" "+cls):"");
+  sec.innerHTML='<div class="mw-h"><span>'+title+'</span><span class="mw-c">'+arr.length+'</span></div>';
+  var box=document.createElement("div"); box.className="zcards";
+  if(!arr.length){ box.innerHTML='<div class="zempty">없음</div>'; } else arr.forEach(function(l){ box.appendChild(loanerCard(l)); });
+  sec.appendChild(box); host.appendChild(sec);
+}
+function renderLnList(){
+  var body=document.getElementById("lnBody"); if(!body) return;
+  body.innerHTML="";
+  var q=normStr(loanerQuery);
+  var list=LOANERS.filter(function(l){
+    if(loanerFilter==="전기"&&!l.is_ev) return false;
+    if(loanerFilter==="일반"&&l.is_ev) return false;
+    if(q && !(normStr(l.plate).indexOf(q)>=0 || normStr(l.model||"").indexOf(q)>=0)) return false;
+    return true;
+  });
+  var byp=function(a,b){ return String(a.plate).localeCompare(String(b.plate)); };
+  var out=list.filter(function(l){return l.status==="대여중";}).sort(byp);
+  var rsv=list.filter(function(l){return l.status==="예약중";}).sort(byp);
+  var idle=list.filter(function(l){return (l.status||"대기")==="대기";}).sort(byp);
+  var bar=document.createElement("div"); bar.className="mysum"; bar.innerHTML='<span class="mstat">대여중 '+out.length+' · 예약중 '+rsv.length+' · 대기 '+idle.length+' / 총 '+list.length+'대</span>'; body.appendChild(bar);
+  lnSection(body,"대여중",out,"ov"); lnSection(body,"예약중",rsv); lnSection(body,"대기",idle,"done");
+}
+function renderLoaner(){
+  var host=document.getElementById("loaner"); if(!host) return;
+  host.innerHTML="";
+  var tb=document.createElement("div"); tb.className="loctb";
+  tb.innerHTML='<button class="locbtn on" id="lnAdd">＋ 대차 등록</button>'+
+    '<input class="locsearch" id="lnSearch" type="search" placeholder="번호·차종 검색" value="'+escA(loanerQuery)+'">';
+  host.appendChild(tb);
+  var fl=document.createElement("div"); fl.className="lnfilter";
+  ["전체","일반","전기"].forEach(function(f){ var b=document.createElement("button"); b.className="lnfb"+(loanerFilter===f?" on":""); b.textContent=f;
+    b.addEventListener("click", function(){ loanerFilter=f; fl.querySelectorAll(".lnfb").forEach(function(x){ x.classList.toggle("on", x===b); }); renderLnList(); }); fl.appendChild(b); });
+  host.appendChild(fl);
+  var body=document.createElement("div"); body.id="lnBody"; host.appendChild(body);
+  renderLnList();
+  tb.querySelector("#lnAdd").addEventListener("click", openLoanerNew);
+  var si=tb.querySelector("#lnSearch"); si.addEventListener("input", function(){ loanerQuery=si.value; renderLnList(); });
+}
+function openLoanerNew(){
+  loanerPhoto=null;
+  modalBox.innerHTML=
+    '<div class="mhead"><span class="mt">대차 등록</span><button class="x" id="mClose">✕</button></div>'+
+    '<div class="mbody"><div class="edform">'+
+      '<label class="edrow"><span class="edk">차량번호</span><input type="text" id="lnPlate" placeholder="예: 12가3456"></label>'+
+      '<label class="edrow"><span class="edk">차종</span><input type="text" id="lnModel" placeholder="예: 캐스퍼"></label>'+
+      '<label class="edrow"><span class="edk">구분</span><select id="lnEv"><option value="">일반</option><option value="1">전기차</option></select></label>'+
+      '<div class="edrow col"><span class="edk">사진 (선택)</span><button class="locbtn" id="lnPhotoBtn" type="button">사진 선택</button><img id="lnPhotoPrev" class="rgprev" style="display:none"></div>'+
+    '</div><div class="edbtns"><button class="edcancel" id="lnCancel">취소</button><button class="edsave" id="lnSave">등록</button></div></div>';
+  modalBox.querySelector("#mClose").addEventListener("click", closeModal);
+  modalBox.querySelector("#lnCancel").addEventListener("click", closeModal);
+  modalBox.querySelector("#lnPhotoBtn").addEventListener("click", function(){ pickPhoto(function(d){ loanerPhoto=d; var pv=modalBox.querySelector("#lnPhotoPrev"); if(pv){ pv.src=d; pv.style.display="block"; } }); });
+  modalBox.querySelector("#lnSave").addEventListener("click", addLoaner);
+  showOverlay();
+}
+function addLoaner(){
+  var g=function(sel){ var el=modalBox.querySelector(sel); return el?el.value:""; };
+  var plate=(g("#lnPlate")||"").trim(), model=(g("#lnModel")||"").trim(), ev=!!g("#lnEv");
+  if(!plate){ alert("차량번호를 입력하세요."); return; }
+  var who=currentActor();
+  var row={ shop_id:SHOP_ID, plate:plate, model:model, photo:loanerPhoto||null, is_ev:ev, status:"대기", active:true, updated_by:who, updated_at:new Date().toISOString() };
+  sbClient.from("loaners").insert(row).then(function(res){ if(res.error){ saveErr(res.error); return; } closeModal(); reloadLoaners(); });
+}
+function openLoanerEdit(l){
+  lnStatusSel = l.status || "대기";
+  var cars = DATA.map(function(v){ return '<option value="'+escA(v.plate+" "+(v.model||""))+'">'; }).join("");
+  modalBox.innerHTML=
+    '<div class="mhead"><span class="mt">대차 · '+esc(l.plate)+'</span><button class="x" id="mClose">✕</button></div>'+
+    '<div class="mbody">'+
+      '<div class="vinfo"><span class="pl">'+esc(l.plate)+'</span><span class="md">'+esc(l.model||"")+'</span>'+(l.is_ev?'<span class="evtag">⚡전기</span>':'')+'</div>'+
+      '<div class="grp"><div class="grp-t">상태</div><div class="lnseg" id="lnSeg">'+
+        ["대기","예약중","대여중"].map(function(s){ return '<button class="lnsegb'+(s===lnStatusSel?" on":"")+'" data-s="'+s+'">'+s+'</button>'; }).join("")+
+      '</div></div>'+
+      '<div id="lnFields"></div>'+
+      '<datalist id="lnCars">'+cars+'</datalist>'+
+      '<div class="edbtns"><button class="edcancel" id="lnCancel">취소</button><button class="edsave" id="lnSave">저장</button></div>'+
+      '<button class="delbtn" id="lnDel">🗑 대차 삭제</button>'+
+    '</div>';
+  modalBox.querySelector("#mClose").addEventListener("click", closeModal);
+  modalBox.querySelector("#lnCancel").addEventListener("click", closeModal);
+  modalBox.querySelector("#lnDel").addEventListener("click", function(){ deleteLoaner(l.id); });
+  modalBox.querySelector("#lnSave").addEventListener("click", function(){ saveLoaner(l); });
+  modalBox.querySelectorAll(".lnsegb").forEach(function(b){ b.addEventListener("click", function(){ lnStatusSel=b.getAttribute("data-s"); modalBox.querySelectorAll(".lnsegb").forEach(function(x){ x.classList.toggle("on", x===b); }); renderLnFields(l); }); });
+  renderLnFields(l);
+  showOverlay();
+}
+function renderLnFields(l){
+  var box=modalBox.querySelector("#lnFields"); if(!box) return;
+  var PRE=["서울","경기","세종","목동","광주"];
+  var tv=function(x){ return x?escA(x):""; };
+  var myn=(getMyName()&&getMyName()!=="__ALL__")?getMyName():"";
+  var html="";
+  if(lnStatusSel==="예약중"){
+    html='<div class="grp"><div class="grp-t">예약 정보</div><div class="edform">'+
+      '<label class="edrow"><span class="edk">예약 담당자</span><input type="text" id="lnRby" value="'+tv(l.reserved_by||myn)+'"></label>'+
+      '<label class="edrow"><span class="edk">대여 대상</span><input type="text" id="lnTarget" list="lnCars" value="'+tv(l.target_text)+'" placeholder="수리차량 검색·입력"></label>'+
+      '</div></div>';
+  } else if(lnStatusSel==="대여중"){
+    html='<div class="grp"><div class="grp-t">대여 정보</div><div class="edform">'+
+      '<label class="edrow"><span class="edk">대여 대상</span><input type="text" id="lnTarget" list="lnCars" value="'+tv(l.target_text)+'" placeholder="수리차량 검색·입력"></label>'+
+      '<label class="edrow"><span class="edk">담당</span><input type="text" id="lnHandler" value="'+tv(l.handler||myn)+'"></label>'+
+      '<label class="edrow col"><span class="edk">위치</span><input type="text" id="lnLoc" value="'+tv(l.location)+'" placeholder="지역">'+
+        '<div class="locpre">'+PRE.map(function(p){ return '<button type="button" class="locprebtn" data-p="'+p+'">'+p+'</button>'; }).join("")+'</div>'+
+      '</label></div></div>';
+  } else {
+    html='<div class="lnidle">대기 상태 — 공장 보유 중. (대여/예약 시 위 상태 버튼을 바꾸세요)</div>';
+  }
+  html+='<div class="grp"><div class="grp-t">메모</div><textarea id="lnMemo" rows="2" class="lnmemo">'+esc(l.memo||"")+'</textarea></div>';
+  box.innerHTML=html;
+  box.querySelectorAll(".locprebtn").forEach(function(b){ b.addEventListener("click", function(){ var i=modalBox.querySelector("#lnLoc"); if(i) i.value=b.getAttribute("data-p"); }); });
+}
+function saveLoaner(l){
+  var g=function(sel){ var el=modalBox.querySelector(sel); return el?el.value.trim():""; };
+  var status=lnStatusSel, now=new Date().toISOString(), who=currentActor();
+  var memo=(function(){ var el=modalBox.querySelector("#lnMemo"); return el?el.value:""; })();
+  var patch={ status:status, memo:memo, updated_by:who, updated_at:now };
+  if(status==="대여중"){ patch.target_text=g("#lnTarget")||null; patch.location=g("#lnLoc")||null; patch.handler=g("#lnHandler")||null; patch.reserved_by=null; patch.reserved_at=null; }
+  else if(status==="예약중"){ patch.target_text=g("#lnTarget")||null; patch.location=null; patch.handler=null; patch.reserved_by=g("#lnRby")||who; patch.reserved_at=(l.status==="예약중"&&l.reserved_at)?l.reserved_at:now; }
+  else { patch.target_text=null; patch.location=null; patch.handler=null; patch.reserved_by=null; patch.reserved_at=null; }
+  sbClient.from("loaners").update(patch).eq("id",l.id).then(function(res){ if(res.error){ saveErr(res.error); return; } closeModal(); reloadLoaners(); });
+}
+function deleteLoaner(id){ if(!confirm("이 대차를 목록에서 삭제할까요?")) return; sbClient.from("loaners").update({active:false}).eq("id",id).then(function(res){ if(res.error){ saveErr(res.error); return; } closeModal(); reloadLoaners(); }); }
+
 /* ── 데이터 로드 + 실시간 ── */
 function onErr(e){ document.getElementById("board").innerHTML='<div style="padding:30px;color:#b00">'+esc(e&&e.message?e.message:e)+'</div>'; }
 /* Supabase 는 한 번에 최대 1000행만 주므로, 나눠서 전부 불러온다(집계 누락 방지) */
@@ -1249,6 +1425,7 @@ async function loadData(){
   STATUS = {}; OVERRIDE = {}; LOCS = {};
   ss.forEach(function(s){ STATUS[s.db_id]={body:s.body,paint:s.paint,done:s.done,long:s.is_long,prio:s.is_prio,updated_at:s.updated_at}; OVERRIDE[s.db_id]=ovFrom(s); LOCS[s.db_id]=s.location_zone||null; });
   ZONES = zs.filter(function(z){ return z.active!==false; }); ZMAP={}; ZONES.forEach(function(z){ ZMAP[z.id]=z; });
+  const ls = await loadAll("loaners"); LOANERS = ls.filter(function(l){ return l.active!==false; });
   RAW = vs.map(mapRow);   // STATUS·OVERRIDE 먼저 구성 후 매핑
   buildAdvisorFilter(); render();
 }
@@ -1261,7 +1438,11 @@ function subscribeRealtime(){
   sbClient.channel("status-rt")
     .on("postgres_changes", { event:"*", schema:"public", table:"vehicle_status" }, applyStatusChange)
     .subscribe();
+  sbClient.channel("loaner-rt")
+    .on("postgres_changes", { event:"*", schema:"public", table:"loaners" }, function(){ reloadLoaners(); })
+    .subscribe();
 }
+function reloadLoaners(){ return loadAll("loaners").then(function(ls){ LOANERS=ls.filter(function(l){ return l.active!==false; }); render(); }).catch(function(e){ console.error(e); }); }
 function startVehicleRefresh(){
   setInterval(function(){
     if(overlay.classList.contains("show") || Date.now()<suppressUntil) return;
@@ -1334,6 +1515,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
