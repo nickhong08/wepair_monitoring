@@ -436,6 +436,15 @@ body.mode-loaner .loaner{ display:block; }
 
 /* 대차 기본정보 수정 버튼 */
 .editinfo{ margin-left:auto; padding:5px 10px; border:1px solid #d6dae0; background:#fff; color:#555; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; }
+
+/* 대여 대상 자동완성(커스텀) */
+.edrow .combo{ flex:1; width:100%; }
+.combo input{ width:100%; }
+.comres{ display:none; margin-top:5px; border:1px solid var(--line); border-radius:8px; max-height:210px; overflow-y:auto; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,.08); }
+.comitem{ padding:12px; font-size:15px; font-weight:800; color:#1c2024; cursor:pointer; border-top:1px solid #f0f2f5; }
+.comitem:first-child{ border-top:0; }
+.comitem .md{ color:#666; font-weight:600; font-size:13px; }
+.comitem:active{ background:#eef0f3; }
 </style>
 </head>
 <body>
@@ -1349,7 +1358,6 @@ function addLoaner(){
 }
 function openLoanerEdit(l){
   lnStatusSel = l.status || "대기"; loanerEditInfo=false; loanerPhoto=null;
-  var cars = DATA.map(function(v){ return '<option value="'+escA(v.plate+" "+(v.model||""))+'">'; }).join("");
   modalBox.innerHTML=
     '<div class="mhead"><span class="mt">대차 · '+esc(l.plate)+'</span><button class="x" id="mClose">✕</button></div>'+
     '<div class="mbody">'+
@@ -1358,7 +1366,6 @@ function openLoanerEdit(l){
         ["대기","대여중","예약중"].map(function(s){ return '<button class="lnsegb'+(s===lnStatusSel?" on":"")+'" data-s="'+s+'">'+s+'</button>'; }).join("")+
       '</div></div>'+
       '<div id="lnFields"></div>'+
-      '<datalist id="lnCars">'+cars+'</datalist>'+
       '<div class="edbtns"><button class="edcancel" id="lnCancel">취소</button><button class="edsave" id="lnSave">저장</button></div>'+
       '<button class="delbtn" id="lnDel">🗑 대차 삭제</button>'+
     '</div>';
@@ -1389,15 +1396,16 @@ function renderLnFields(l){
   var box=modalBox.querySelector("#lnFields"); if(!box) return;
   var tv=function(x){ return x?escA(x):""; };
   var myn=(getMyName()&&getMyName()!=="__ALL__")?getMyName():"";
+  var combo=function(val){ return '<div class="combo"><input type="text" id="lnTarget" autocomplete="off" value="'+tv(val)+'" placeholder="수리차량 검색·입력"><div class="comres" id="lnTargetRes"></div></div>'; };
   var html="";
   if(lnStatusSel==="예약중"){
     html='<div class="grp"><div class="grp-t">예약 정보</div><div class="edform">'+
       '<label class="edrow"><span class="edk">예약 담당자</span><input type="text" id="lnRby" value="'+tv(l.reserved_by||myn)+'"></label>'+
-      '<label class="edrow"><span class="edk">대여 대상</span><input type="text" id="lnTarget" list="lnCars" value="'+tv(l.target_text)+'" placeholder="수리차량 검색·입력"></label>'+
+      '<label class="edrow col"><span class="edk">대여 대상</span>'+combo(l.target_text)+'</label>'+
       '</div></div>';
   } else if(lnStatusSel==="대여중"){
     html='<div class="grp"><div class="grp-t">대여 정보</div><div class="edform">'+
-      '<label class="edrow"><span class="edk">대여 대상</span><input type="text" id="lnTarget" list="lnCars" value="'+tv(l.target_text)+'" placeholder="수리차량 검색·입력"></label>'+
+      '<label class="edrow col"><span class="edk">대여 대상</span>'+combo(l.target_text)+'</label>'+
       '<label class="edrow"><span class="edk">담당</span><input type="text" id="lnHandler" value="'+tv(l.handler||myn)+'"></label>'+
       '<label class="edrow col"><span class="edk">대여 위치</span><input type="text" id="lnLoc" value="'+tv(l.location)+'" placeholder="예: 서울 강남구, 경기 광주"></label>'+
     '</div></div>';
@@ -1406,6 +1414,23 @@ function renderLnFields(l){
   }
   html+='<div class="grp"><div class="grp-t">메모</div><textarea id="lnMemo" rows="2" class="lnmemo">'+esc(l.memo||"")+'</textarea></div>';
   box.innerHTML=html;
+  wireTargetCombo();
+}
+/* 대여 대상 자동완성(직접 구현) — 모바일 datalist 선택 안 되는 문제 해결 */
+function wireTargetCombo(){
+  var inp=modalBox.querySelector("#lnTarget"), res=modalBox.querySelector("#lnTargetRes"); if(!inp||!res) return;
+  function show(){
+    var q=normStr(inp.value);
+    if(!q){ res.style.display="none"; res.innerHTML=""; return; }
+    var list=DATA.filter(function(v){ return normStr(v.plate+" "+(v.model||"")).indexOf(q)>=0; }).slice(0,8);
+    if(!list.length){ res.style.display="none"; res.innerHTML=""; return; }
+    res.innerHTML=list.map(function(v){ return '<div class="comitem" data-t="'+escA(v.plate+" "+(v.model||""))+'">'+esc(v.plate)+' <span class="md">'+esc(v.model||"")+'</span></div>'; }).join("");
+    res.style.display="block";
+    res.querySelectorAll(".comitem").forEach(function(it){ it.addEventListener("mousedown", function(e){ e.preventDefault(); inp.value=it.getAttribute("data-t"); res.style.display="none"; }); });
+  }
+  inp.addEventListener("input", show);
+  inp.addEventListener("focus", show);
+  inp.addEventListener("blur", function(){ setTimeout(function(){ res.style.display="none"; }, 200); });
 }
 function saveLoaner(l){
   var g=function(sel){ var el=modalBox.querySelector(sel); return el?el.value.trim():""; };
@@ -1536,6 +1561,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
