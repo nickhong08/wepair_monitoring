@@ -229,7 +229,7 @@
 .edhint{ font-size:12px; color:#888; margin:6px 0 12px; line-height:1.5; }
 .edform{ display:flex; flex-direction:column; gap:10px; }
 .edrow{ display:flex; align-items:center; gap:10px; }
-.edrow.col{ align-items:flex-start; flex-direction:column; gap:5px; }
+.edrow.stk{ align-items:flex-start; flex-direction:column; gap:5px; }
 .edrow .edk{ flex:0 0 92px; font-size:13px; color:#666; font-weight:600; }
 .edrow input,.edrow select,.edrow textarea{ flex:1; width:100%; padding:9px 11px; border:1px solid #d6dae0; border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box; background:#fff; }
 .edrow textarea{ resize:vertical; }
@@ -445,6 +445,10 @@ body.mode-loaner .loaner{ display:block; }
 .comitem:first-child{ border-top:0; }
 .comitem .md{ color:#666; font-weight:600; font-size:13px; }
 .comitem:active{ background:#eef0f3; }
+
+/* 지도/구역에 표시되는 대차 태그 */
+.lotag{ font-size:11px; font-weight:800; color:#fff; background:#7a869a; border-radius:8px; padding:1px 6px; margin-right:3px; }
+.edrow.stk{ gap:6px; } .edrow.stk .edk{ margin-bottom:2px; } .edrow.stk .combo,.edrow.stk input,.edrow.stk select,.edrow.stk textarea{ width:100%; }
 </style>
 </head>
 <body>
@@ -936,7 +940,8 @@ function pickMapImage(){
     }; img.src=rd.result; }; rd.readAsDataURL(f); };
   inp.click();
 }
-function zoneCount(zid){ return DATA.filter(function(v){ return (getLoc(v.dbId)||"")===(zid||""); }).length; }
+function loanersInZone(zid){ return zid ? LOANERS.filter(function(l){ return l.zone_id===zid; }) : []; }
+function zoneCount(zid){ return DATA.filter(function(v){ return (getLoc(v.dbId)||"")===(zid||""); }).length + loanersInZone(zid).length; }
 function zoneMenu(z){
   var a=prompt('구역 이름 수정 (비우고 확인하면 삭제)', z.name); if(a===null) return;
   if(a.trim()===""){ if(confirm('"'+z.name+'" 구역을 삭제할까요?')) deleteZone(z.id); return; }
@@ -945,13 +950,14 @@ function zoneMenu(z){
 function openZonePanel(zid){
   var name = zid ? (zoneName(zid)||"삭제된 구역") : "미지정";
   var list = DATA.filter(function(v){ return (getLoc(v.dbId)||"")===(zid||""); });
-  modalBox.innerHTML='<div class="mhead"><span class="mt">'+esc(name)+' · '+list.length+'대</span><button class="x" id="mClose">✕</button></div><div class="mbody" id="zpBody"></div>';
+  var los = loanersInZone(zid);
+  modalBox.innerHTML='<div class="mhead"><span class="mt">'+esc(name)+' · '+(list.length+los.length)+'대</span><button class="x" id="mClose">✕</button></div><div class="mbody" id="zpBody"></div>';
   var body=modalBox.querySelector("#zpBody");
   var addBtn=document.createElement("button"); addBtn.className="zoneadd"; addBtn.textContent="＋ 이 위치에 차량 추가";
   addBtn.addEventListener("click", function(){ openZoneAdd(zid||""); });
   body.appendChild(addBtn);
-  if(!list.length){ var e=document.createElement("div"); e.className="nophoto"; e.textContent="이 구역에 차량이 없습니다."; body.appendChild(e); }
-  else list.sort(cmpCard).forEach(function(v){
+  if(!list.length && !los.length){ var e=document.createElement("div"); e.className="nophoto"; e.textContent="이 구역에 차량이 없습니다."; body.appendChild(e); }
+  list.sort(cmpCard).forEach(function(v){
     var card=cardEl(v, true, null);
     if(getStatus(v).done){   // 출고완료 차량만: ✕ 로 위치에서 제외
       card.classList.add("haszx");
@@ -961,6 +967,7 @@ function openZonePanel(zid){
     }
     body.appendChild(card);
   });
+  los.forEach(function(x){ body.appendChild(loanerCard(x, true)); });   // 대차도 함께 표시
   modalBox.querySelector("#mClose").addEventListener("click", closeModal);
   showOverlay();
 }
@@ -997,11 +1004,12 @@ function renderZaList(zid){
 /* 지도 아래: 구역별 차량 리스트(썸네일·번호·차종). 구역마다 최대 높이 안에서 스크롤 → 서로 겹치지 않음 */
 function zoneSection(host, zid, name){
   var list=DATA.filter(function(v){ return (getLoc(v.dbId)||"")===(zid||""); });
+  var los=loanersInZone(zid);
   var sec=document.createElement("div"); sec.className="zsec"; sec.id="zsec-"+(zid||"none");
-  sec.innerHTML='<div class="zsec-h"><span>'+esc(name)+'</span><span class="mw-c">'+list.length+'</span></div>';
+  sec.innerHTML='<div class="zsec-h"><span>'+esc(name)+'</span><span class="mw-c">'+(list.length+los.length)+'</span></div>';
   var box=document.createElement("div"); box.className="zcards";
-  if(!list.length){ box.innerHTML='<div class="zempty">차량 없음</div>'; }
-  else list.sort(cmpCard).forEach(function(v){ box.appendChild(cardEl(v, true, null)); });
+  if(!list.length && !los.length){ box.innerHTML='<div class="zempty">차량 없음</div>'; }
+  else { list.sort(cmpCard).forEach(function(v){ box.appendChild(cardEl(v, true, null)); }); los.forEach(function(x){ box.appendChild(loanerCard(x, true)); }); }
   sec.appendChild(box); host.appendChild(sec);
 }
 var locQuery="";
@@ -1039,10 +1047,10 @@ function renderLocation(){
   var rb=document.createElement("div"); rb.className="locresults"; rb.id="locResults"; host.appendChild(rb);
   var wrap=document.createElement("div"); wrap.className="mapwrap"+(zoneEdit?" editing":"");
   var img=document.createElement("img"); img.className="mapimg"; img.src=MAPIMG; wrap.appendChild(img);
-  ZONES.forEach(function(z){ var cars=DATA.filter(function(v){ return getLoc(v.dbId)===z.id; }); var n=cars.length;
+  ZONES.forEach(function(z){ var cars=DATA.filter(function(v){ return getLoc(v.dbId)===z.id; }); var los=loanersInZone(z.id); var n=cars.length+los.length;
     var pin=document.createElement("div"); pin.className="pin"+(n?" has":""); pin.setAttribute("data-zone", z.id);
     pin.style.left=(z.x||50)+"%"; pin.style.top=(z.y||50)+"%";
-    var thumb=n?(cars[0].photo||PLACEHOLDER):null;
+    var thumb=cars[0]?(cars[0].photo||PLACEHOLDER):(los[0]?(los[0].photo||PLACEHOLDER):null);
     pin.innerHTML='<div class="pinmark'+(n?"":" empty")+'">'+(thumb?'<img src="'+thumb+'">':'')+'<span class="pincnt">'+n+'</span></div><div class="pinlab">'+esc(z.name)+'</div>';
     var th=pin.querySelector(".pinmark img"); if(th&&thumb) th.onerror=function(){ imgErr(th); };
     pin.addEventListener("click", function(ev){ ev.stopPropagation(); if(zoneEdit){ zoneMenu(z); return; } openZonePanel(z.id); });
@@ -1178,7 +1186,7 @@ function openRegister(presetZone){
         '<label class="edrow"><span class="edk">차량번호</span><input type="text" id="rgPlate" placeholder="예: 12가3456"></label>'+
         '<label class="edrow"><span class="edk">차종</span><input type="text" id="rgModel" placeholder="예: 벤츠 E300"></label>'+
         '<label class="edrow"><span class="edk">위치</span><select id="rgZone">'+zopts+'</select></label>'+
-        '<div class="edrow col"><span class="edk">사진 (선택)</span><button class="locbtn" id="rgPhotoBtn" type="button">사진 선택</button><img id="rgPhotoPrev" class="rgprev" style="display:none"></div>'+
+        '<div class="edrow stk"><span class="edk">사진 (선택)</span><button class="locbtn" id="rgPhotoBtn" type="button">사진 선택</button><img id="rgPhotoPrev" class="rgprev" style="display:none"></div>'+
       '</div>'+
       '<div class="edbtns"><button class="edcancel" id="rgCancel">취소</button><button class="edsave" id="rgSave">등록</button></div>'+
     '</div>';
@@ -1233,7 +1241,7 @@ function openEditForm(v, ins){
         '<label class="edrow"><span class="edk">렌트카 정보</span><input type="text" id="edRent" value="'+tv(v.rent)+'"></label>'+
         '<label class="edrow"><span class="edk">보험사</span><input type="text" id="edIns" value="'+tv(v.insurer)+'"></label>'+
         '<label class="edrow"><span class="edk">보험사 담당자</span><input type="text" id="edInsStaff" inputmode="tel" value="'+tv(v.insurerStaff)+'"></label>'+
-        '<label class="edrow col"><span class="edk">메모</span><textarea id="edMemo" rows="3">'+esc(v.memo||"")+'</textarea></label>'+
+        '<label class="edrow stk"><span class="edk">메모</span><textarea id="edMemo" rows="3">'+esc(v.memo||"")+'</textarea></label>'+
       '</div>'+
       '<div class="edbtns"><button class="edcancel" id="edCancel">취소</button><button class="edsave" id="edSave">저장</button></div>'+
       '<button class="edrevert" id="edRevert">↩ 원본으로 되돌리기 (수정값 전체 삭제)</button>'+
@@ -1280,11 +1288,11 @@ function loanerSub(l){
   if(l.status==="예약중"){ return "예약 · "+(l.reserved_by||"-")+" · "+timeAgo(l.reserved_at); }
   return "";
 }
-function loanerCard(l){
+function loanerCard(l, tag){
   var st=l.status||"대기"; var bcls = st==="대여중"?"out":st==="예약중"?"rsv":"idle";
   var el=document.createElement("div"); el.className="card loanercard"; var sub=loanerSub(l);
   el.innerHTML='<img class="thumb" src="'+(l.photo||PLACEHOLDER)+'"><div class="cinfo">'+
-    '<div class="cline">'+(l.is_ev?'<span class="evtag">⚡</span>':'')+'<span class="plate">'+esc(l.plate)+'</span><span class="model">'+esc(l.model||"")+'</span></div>'+
+    '<div class="cline">'+(tag?'<span class="lotag">대차</span>':'')+(l.is_ev?'<span class="evtag">⚡</span>':'')+'<span class="plate">'+esc(l.plate)+'</span><span class="model">'+esc(l.model||"")+'</span></div>'+
     '<div class="cbot"><span class="lbadge '+bcls+'">'+st+'</span>'+(sub?'<span class="lsub">'+esc(sub)+'</span>':'')+'</div>'+
     (l.updated_at?'<div class="lupd">'+esc(l.updated_by||"")+' · '+timeAgo(l.updated_at)+'</div>':'')+
   '</div>';
@@ -1340,7 +1348,7 @@ function openLoanerNew(){
       '<label class="edrow"><span class="edk">차량번호</span><input type="text" id="lnPlate" placeholder="예: 12가3456"></label>'+
       '<label class="edrow"><span class="edk">차종</span><input type="text" id="lnModel" placeholder="예: 캐스퍼"></label>'+
       '<label class="edrow"><span class="edk">구분</span><select id="lnEv"><option value="">일반</option><option value="1">전기차</option></select></label>'+
-      '<div class="edrow col"><span class="edk">사진 (선택)</span><button class="locbtn" id="lnPhotoBtn" type="button">사진 선택</button><img id="lnPhotoPrev" class="rgprev" style="display:none"></div>'+
+      '<div class="edrow stk"><span class="edk">사진 (선택)</span><button class="locbtn" id="lnPhotoBtn" type="button">사진 선택</button><img id="lnPhotoPrev" class="rgprev" style="display:none"></div>'+
     '</div><div class="edbtns"><button class="edcancel" id="lnCancel">취소</button><button class="edsave" id="lnSave">등록</button></div></div>';
   modalBox.querySelector("#mClose").addEventListener("click", closeModal);
   modalBox.querySelector("#lnCancel").addEventListener("click", closeModal);
@@ -1387,7 +1395,7 @@ function renderLnInfo(l){
       '<label class="edrow"><span class="edk">차량번호</span><input type="text" id="lnEPlate" value="'+escA(l.plate)+'"></label>'+
       '<label class="edrow"><span class="edk">차종</span><input type="text" id="lnEModel" value="'+escA(l.model||"")+'"></label>'+
       '<label class="edrow"><span class="edk">구분</span><select id="lnEEv"><option value=""'+(!l.is_ev?" selected":"")+'>일반</option><option value="1"'+(l.is_ev?" selected":"")+'>전기차</option></select></label>'+
-      '<div class="edrow col"><span class="edk">사진</span><button class="locbtn" id="lnEPhoto" type="button">사진 변경</button><img id="lnEPhotoPrev" class="rgprev" src="'+(l.photo||"")+'"'+(l.photo?"":' style="display:none"')+'></div>'+
+      '<div class="edrow stk"><span class="edk">사진</span><button class="locbtn" id="lnEPhoto" type="button">사진 변경</button><img id="lnEPhotoPrev" class="rgprev" src="'+(l.photo||"")+'"'+(l.photo?"":' style="display:none"')+'></div>'+
     '</div></div>';
     var pb=box.querySelector("#lnEPhoto"); if(pb) pb.addEventListener("click", function(){ pickPhoto(function(d){ loanerPhoto=d; var pv=modalBox.querySelector("#lnEPhotoPrev"); if(pv){ pv.src=d; pv.style.display="block"; } }); });
   }
@@ -1401,16 +1409,19 @@ function renderLnFields(l){
   if(lnStatusSel==="예약중"){
     html='<div class="grp"><div class="grp-t">예약 정보</div><div class="edform">'+
       '<label class="edrow"><span class="edk">예약 담당자</span><input type="text" id="lnRby" value="'+tv(l.reserved_by||myn)+'"></label>'+
-      '<label class="edrow col"><span class="edk">대여 대상</span>'+combo(l.target_text)+'</label>'+
+      '<label class="edrow stk"><span class="edk">대여 대상</span>'+combo(l.target_text)+'</label>'+
       '</div></div>';
   } else if(lnStatusSel==="대여중"){
     html='<div class="grp"><div class="grp-t">대여 정보</div><div class="edform">'+
-      '<label class="edrow col"><span class="edk">대여 대상</span>'+combo(l.target_text)+'</label>'+
+      '<label class="edrow stk"><span class="edk">대여 대상</span>'+combo(l.target_text)+'</label>'+
       '<label class="edrow"><span class="edk">담당</span><input type="text" id="lnHandler" value="'+tv(l.handler||myn)+'"></label>'+
-      '<label class="edrow col"><span class="edk">대여 위치</span><input type="text" id="lnLoc" value="'+tv(l.location)+'" placeholder="예: 서울 강남구, 경기 광주"></label>'+
+      '<label class="edrow stk"><span class="edk">대여 위치</span><input type="text" id="lnLoc" value="'+tv(l.location)+'" placeholder="예: 서울 강남구, 경기 광주"></label>'+
     '</div></div>';
   } else {
-    html='<div class="lnidle">대기 상태 — 공장 보유 중. (대여/예약 시 위 상태 버튼을 바꾸세요)</div>';
+    var zopts='<option value="">구역 미지정</option>'+ZONES.map(function(z){ return '<option value="'+z.id+'"'+(z.id===l.zone_id?" selected":"")+'>'+esc(z.name)+'</option>'; }).join("");
+    html='<div class="grp"><div class="grp-t">주차 구역 (공장 보유 위치)</div><div class="edform">'+
+      '<label class="edrow"><span class="edk">구역</span><select id="lnZone">'+zopts+'</select></label>'+
+      '</div><div class="lnidle">대기 상태 — 공장 보유 중. 구역을 지정하면 지도(위치)에 이 대차가 표시됩니다.</div></div>';
   }
   html+='<div class="grp"><div class="grp-t">메모</div><textarea id="lnMemo" rows="2" class="lnmemo">'+esc(l.memo||"")+'</textarea></div>';
   box.innerHTML=html;
@@ -1443,9 +1454,9 @@ function saveLoaner(l){
     var evEl=modalBox.querySelector("#lnEEv"); patch.is_ev=!!(evEl && evEl.value);
     if(loanerPhoto) patch.photo=loanerPhoto;
   }
-  if(status==="대여중"){ patch.target_text=g("#lnTarget")||null; patch.location=g("#lnLoc")||null; patch.handler=g("#lnHandler")||null; patch.reserved_by=null; patch.reserved_at=null; }
-  else if(status==="예약중"){ patch.target_text=g("#lnTarget")||null; patch.location=null; patch.handler=null; patch.reserved_by=g("#lnRby")||who; patch.reserved_at=(l.status==="예약중"&&l.reserved_at)?l.reserved_at:now; }
-  else { patch.target_text=null; patch.location=null; patch.handler=null; patch.reserved_by=null; patch.reserved_at=null; }
+  if(status==="대여중"){ patch.target_text=g("#lnTarget")||null; patch.location=g("#lnLoc")||null; patch.handler=g("#lnHandler")||null; patch.reserved_by=null; patch.reserved_at=null; patch.zone_id=null; }
+  else if(status==="예약중"){ patch.target_text=g("#lnTarget")||null; patch.location=null; patch.handler=null; patch.reserved_by=g("#lnRby")||who; patch.reserved_at=(l.status==="예약중"&&l.reserved_at)?l.reserved_at:now; patch.zone_id=null; }
+  else { patch.target_text=null; patch.location=null; patch.handler=null; patch.reserved_by=null; patch.reserved_at=null; patch.zone_id=(function(){ var el=modalBox.querySelector("#lnZone"); return el&&el.value?el.value:null; })(); }
   sbClient.from("loaners").update(patch).eq("id",l.id).then(function(res){ if(res.error){ saveErr(res.error); return; } closeModal(); reloadLoaners(); });
 }
 function deleteLoaner(id){ if(!confirm("이 대차를 목록에서 삭제할까요?")) return; sbClient.from("loaners").update({active:false}).eq("id",id).then(function(res){ if(res.error){ saveErr(res.error); return; } closeModal(); reloadLoaners(); }); }
@@ -1561,6 +1572,8 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
+
 
 
 
