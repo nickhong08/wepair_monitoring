@@ -456,6 +456,27 @@ body.mode-loaner .loaner{ display:block; }
 /* 대차 카드: 차종 강조, 차량번호 보조 */
 .lomodel{ font-size:16px; font-weight:800; color:#1c2024; }
 .loplate{ font-size:13px; font-weight:700; color:#8b9298; }
+
+/* 검색 결과: 보드 가로배치 해제(카드 잘림 방지) */
+.board.srch{ display:block; overflow-x:visible; }
+/* 카드 하단: 한 줄 유지(대차/위치 칩은 줄이거나 …) */
+.cbot{ flex-wrap:nowrap; overflow:hidden; }
+.cbot .adv{ flex:none; }
+.locchip{ font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100px; flex:none; }
+/* 상세: 버튼·작업상태 크기 축소 */
+.shipbtn{ padding:10px; font-size:13.5px; margin-top:12px; }
+.editbtn{ padding:9px; font-size:12.5px; }
+.longbtn{ padding:9px; font-size:12.5px; }
+.seg{ padding:8px 5px; font-size:12px; }
+/* 상세: 위치·대차 강조 박스 */
+.llbox{ background:#eef4f3; border:1px solid var(--teal); border-radius:12px; padding:10px 12px; display:flex; flex-direction:column; gap:9px; margin-top:6px; }
+.llrow{ display:flex; align-items:center; gap:10px; }
+.llk{ flex:0 0 38px; font-size:12px; font-weight:800; color:var(--teal-d); }
+.llrow select{ flex:1; padding:8px 10px; border:1px solid #cfe0dd; border-radius:8px; font-size:14px; background:#fff; font-family:inherit; }
+.llv{ flex:1; font-size:14px; font-weight:700; color:#1c2024; display:flex; flex-wrap:wrap; gap:4px; }
+.llv-none{ color:var(--muted); font-weight:600; }
+.llbtn{ flex:none; padding:7px 12px; border:1px solid var(--teal); background:#fff; color:var(--teal-d); border-radius:8px; font-size:13px; font-weight:800; cursor:pointer; }
+.lolink{ padding:5px 10px; border:1px solid var(--teal); background:#fff; color:var(--teal-d); border-radius:14px; font-size:13px; font-weight:800; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -784,7 +805,9 @@ function renderSearchInto(host){
 /* ── 렌더 (화면에 따라 분기) ── */
 function render(){ applyViewChrome(); rebuildData(); var v=getView(); if(v==='mywork') renderMyWork(); else if(v==='location') renderLocation(); else if(v==='loaner') renderLoaner(); else renderBoard(); }
 function renderBoard(){
-  if(normStr(searchQuery)){ var sm=document.getElementById("summary"); if(sm) sm.innerHTML=""; renderSearchInto(document.getElementById("board")); return; }
+  var bd0=document.getElementById("board");
+  if(normStr(searchQuery)){ var sm=document.getElementById("summary"); if(sm) sm.innerHTML=""; if(bd0) bd0.classList.add("srch"); renderSearchInto(bd0); return; }
+  if(bd0) bd0.classList.remove("srch");
   const WD7=["일","월","화","수","목","금","토"];
   const days=[]; { const c=new Date(BOARD_TODAY); c.setDate(c.getDate()-1); while(days.length<6){ if(c.getDay()!==0) days.push(new Date(c)); c.setDate(c.getDate()+1); } }
   const winStart=days[0]; const dayKeys=days.map(d=>ymd(d));
@@ -1141,12 +1164,18 @@ function openDetail(v, edit){
   const locId=getLoc(v.dbId);
   const locSelHtml='<option value=""'+(!locId?" selected":"")+'>미지정</option>'+ZONES.map(function(z){ return '<option value="'+z.id+'"'+(z.id===locId?" selected":"")+'>'+esc(z.name)+'</option>'; }).join("");
   const delBtnHtml = isManual(v) ? '<button class="delbtn" id="delBtn">🗑 수동 등록 삭제</button>' : '';
+  const loList = loanersForCar(v.dbId);
+  const loInfoHtml = loList.length ? loList.map(function(x){ return '<button class="lolink" data-id="'+escA(x.id)+'">🚗 '+esc((x.model||"")+" "+x.plate)+'</button>'; }).join(" ") : '<span class="llv-none">없음</span>';
+  const llGroupHtml = '<div class="grp"><div class="grp-t">위치 · 대차</div><div class="llbox">'+
+    '<label class="llrow"><span class="llk">위치</span><select id="locSel">'+locSelHtml+'</select></label>'+
+    '<div class="llrow"><span class="llk">대차</span><span class="llv" id="loInfo">'+loInfoHtml+'</span><button class="llbtn" id="assignLoaner">'+(loList.length?"변경":"＋ 배정")+'</button></div>'+
+  '</div></div>';
   modalBox.innerHTML=
     '<div class="mhead"><span class="mt">차량 상세'+(s.done?" · 출고완료":"")+'</span><button class="x" id="mClose">✕</button></div>'+
     '<div class="mbody">'+
       '<img class="hero" src="'+(v.photo||PLACEHOLDER)+'">'+
       '<div class="vinfo"><span class="btag '+(ins?"ins":"gen")+'">'+esc(v.insurance||"-")+'</span><span class="pl">'+esc(v.plate)+'</span><span class="md">'+esc(v.model)+'</span>'+colorChip+'<span class="priochip'+(s.prio?" on":"")+'" id="prioBtn">'+(s.prio?"★ 우선":"☆ 우선")+'</span></div>'+
-      advLine+ editBtnHtml+ delBtnHtml+
+      advLine+ llGroupHtml+ editBtnHtml+ delBtnHtml+
       '<button class="shipbtn '+(s.done?"on":"")+'" id="shipBtn">'+(s.done?"↩ 출고 완료 취소":"✓ 출고 완료 처리")+'</button>'+
       (!v.discharge ? '<button class="longbtn '+(s.long?"on":"")+'" id="longBtn">'+(s.long?"↩ 장기건 해제 (미정으로)":"⏳ 장기건(작업대기)으로 이동")+'</button>' : '')+
       '<div class="grp"><div class="grp-t">작업 상태 · 탭하여 변경</div><div class="segwrap">'+
@@ -1157,7 +1186,6 @@ function openDetail(v, edit){
         '<div class="cell"><div class="k">입고일</div><div class="v">'+fmt(v.intake)+'</div></div>'+
         '<div class="cell out"><div class="k">출고 예정일</div><div class="v">'+fmt(v.discharge)+(v.dischargeSrc==="edit"?'<span class="src edit">수정됨</span>':v.dischargeSrc==="memo"?'<span class="src">메모 기준</span>':"")+'</div></div>'+
       '</div></div>'+
-      '<div class="grp"><div class="grp-t">위치 · 주차 구역</div><div class="locrow"><select id="locSel">'+locSelHtml+'</select></div></div>'+
       '<div class="grp"><div class="grp-t">연락처 · 보험</div><div class="rows">'+
         lrowTel("차주 연락처",v.owner)+lrowText("렌트카 정보",v.rent)+lrowText("보험사",v.insurer)+lrowTel("보험사 담당자",v.insurerStaff)+
       '</div></div>'+
@@ -1167,6 +1195,8 @@ function openDetail(v, edit){
   modalBox.querySelector("#mClose").addEventListener("click", closeModal);
   var eb=modalBox.querySelector("#editBtn"); if(eb) eb.addEventListener("click", function(){ openDetail(v, true); });
   var ls=modalBox.querySelector("#locSel"); if(ls) ls.addEventListener("change", function(){ setLoc(v.dbId, ls.value||null); });
+  var al=modalBox.querySelector("#assignLoaner"); if(al) al.addEventListener("click", function(){ openLoanerPickFor(v); });
+  modalBox.querySelectorAll(".lolink").forEach(function(b){ b.addEventListener("click", function(){ var l=LOANERS.find(function(x){return x.id===b.getAttribute("data-id");}); if(l) openLoanerEdit(l); }); });
   var delb=modalBox.querySelector("#delBtn"); if(delb) delb.addEventListener("click", function(){ deleteManual(v.dbId); });
   var pb=modalBox.querySelector("#prioBtn"); if(pb) pb.addEventListener("click", function(){ togglePrio(v.dbId); });
   var sb=modalBox.querySelector("#shipBtn"); if(sb) sb.addEventListener("click", function(){ toggleDone(v.dbId); });
@@ -1349,6 +1379,24 @@ function renderLoaner(){
   var shb=tb.querySelector("#lnShare"); if(shb) shb.addEventListener("click", openLoanerShare);
   var si=tb.querySelector("#lnSearch"); si.addEventListener("input", function(){ loanerQuery=si.value; renderLnList(); });
 }
+/* 수리차량에 배정된 대차 (연결) */
+function loanersForCar(dbId){ return LOANERS.filter(function(l){ return l.target_db_id===dbId; }); }
+function openLoanerPickFor(v){
+  var idle=LOANERS.filter(function(l){ return (l.status||"대기")==="대기"; }).sort(function(a,b){ return String(a.model||"").localeCompare(String(b.model||"")); });
+  var rows = idle.length ? idle.map(function(l){
+    return '<div class="udrow" data-id="'+escA(l.id)+'"><img class="udthumb" src="'+(l.photo||PLACEHOLDER)+'"><div class="udinfo"><div class="udtop"><span class="lomodel">'+esc(l.model||"")+'</span> <span class="loplate">'+esc(l.plate)+'</span></div><div class="udmeta">'+(l.zone_id?esc(zoneName(l.zone_id)||"구역"):"대기")+(l.is_ev?" · ⚡전기":"")+'</div></div><button class="udbtn move" data-id="'+escA(l.id)+'">배정</button></div>';
+  }).join("") : '<div class="nophoto">대기 중인 대차가 없습니다. (대차 탭에서 등록/반납)</div>';
+  modalBox.innerHTML='<div class="mhead"><span class="mt">대차 배정 · '+esc(v.plate)+'</span><button class="x" id="mClose">✕</button></div><div class="mbody"><div class="udnote">이 수리차량에 내보낼 대차를 선택하세요. (대기 중인 대차만)</div><div class="udlist">'+rows+'</div></div>';
+  modalBox.querySelector("#mClose").addEventListener("click", closeModal);
+  modalBox.querySelectorAll(".udthumb").forEach(function(im){ im.onerror=function(){ imgErr(im); }; });
+  modalBox.querySelectorAll(".udbtn.move").forEach(function(b){ b.addEventListener("click", function(){ var l=LOANERS.find(function(x){return x.id===b.getAttribute("data-id");}); if(l) assignLoanerToCar(l, v); }); });
+  showOverlay();
+}
+function assignLoanerToCar(l, v){
+  var who=currentActor(), now=new Date().toISOString();
+  sbClient.from("loaners").update({ status:"대여중", target_db_id:v.dbId, target_text:((v.plate||"")+" "+(v.model||"")).trim(), handler:(v.advisor&&v.advisor!=="미분류")?v.advisor:null, location:null, reserved_by:null, reserved_at:null, zone_id:null, updated_by:who, updated_at:now }).eq("id",l.id).then(function(res){ if(res.error){ saveErr(res.error); return; } reloadLoaners().then(function(){ openDetail(v); }); });
+}
+
 /* 과도기용: 카톡 공유 텍스트 생성/복사 */
 function loanerLine(l){
   var loc = (l.status==="대기") ? (l.zone_id?(zoneName(l.zone_id)||""):"") : (l.status==="대여중" ? (l.location||"") : "");
@@ -1624,6 +1672,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
