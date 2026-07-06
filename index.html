@@ -448,7 +448,7 @@ body.mode-loaner .loaner{ display:block; }
 
 /* 지도/구역에 표시되는 대차 태그 */
 .lotag{ font-size:11px; font-weight:800; color:#fff; background:#7a869a; border-radius:8px; padding:1px 6px; margin-right:3px; }
-.edrow.stk{ gap:6px; } .edrow.stk .edk{ margin-bottom:2px; } .edrow.stk .combo,.edrow.stk input,.edrow.stk select,.edrow.stk textarea{ width:100%; }
+.edrow.stk{ gap:6px; } .edrow.stk .edk{ flex:0 0 auto; margin-bottom:2px; } .edrow.stk .combo,.edrow.stk input,.edrow.stk select,.edrow.stk textarea{ width:100%; }
 
 /* 카톡 공유 텍스트 박스 */
 .sharebox{ width:100%; padding:11px; border:1px solid #d6dae0; border-radius:8px; font-size:13px; font-family:inherit; line-height:1.6; box-sizing:border-box; resize:vertical; }
@@ -632,7 +632,7 @@ let RAW=[]; let DATA=[]; let STATUS={}; let OVERRIDE={}; let currentAdvisor="전
 /* RAW = 표에서 불러온 전체 차량, DATA = 현황판에 실제로 담을 대상(수리중 + 최근 출고완료)만 걸러낸 것 */
 let ZONES=[]; let ZMAP={}; let LOCS={};            // 구역 목록 / id→구역 / 차량id→구역id
 var MAPIMG=null, mapLoaded=false, zoneEdit=false;  // 배경 지도 이미지 / 로드여부 / 구역편집 모드
-let LOANERS=[]; var loanerQuery="", loanerFilter="전체", loanerPhoto=null, lnStatusSel="대기", loanerEditInfo=false;   // 공장대차
+let LOANERS=[]; var loanerQuery="", loanerFilter="전체", loanerPhoto=null, lnStatusSel="대기", loanerEditInfo=false, lnTargetDbId=null;   // 공장대차
 
 /* ── 작업 상태 ── */
 function defaultStatus(v){ let st={body:0,paint:0,done:false,long:false,prio:false};
@@ -1544,7 +1544,7 @@ function addLoaner(){
   sbClient.from("loaners").insert(row).then(function(res){ if(res.error){ saveErr(res.error); return; } closeModal(); reloadLoaners(); });
 }
 function openLoanerEdit(l){
-  lnStatusSel = l.status || "대기"; loanerEditInfo=false; loanerPhoto=null;
+  lnStatusSel = l.status || "대기"; loanerEditInfo=false; loanerPhoto=null; lnTargetDbId=l.target_db_id||null;
   modalBox.innerHTML=
     '<div class="mhead"><span class="mt">대차 · '+esc(l.model||l.plate)+'</span><button class="x" id="mClose">✕</button></div>'+
     '<div class="mbody">'+
@@ -1614,11 +1614,11 @@ function wireTargetCombo(){
     if(!q){ res.style.display="none"; res.innerHTML=""; return; }
     var list=DATA.filter(function(v){ return normStr(v.plate+" "+(v.model||"")).indexOf(q)>=0; }).slice(0,8);
     if(!list.length){ res.style.display="none"; res.innerHTML=""; return; }
-    res.innerHTML=list.map(function(v){ return '<div class="comitem" data-t="'+escA(v.plate+" "+(v.model||""))+'">'+esc(v.plate)+' <span class="md">'+esc(v.model||"")+'</span></div>'; }).join("");
+    res.innerHTML=list.map(function(v){ return '<div class="comitem" data-t="'+escA(v.plate+" "+(v.model||""))+'" data-id="'+escA(v.dbId)+'">'+esc(v.plate)+' <span class="md">'+esc(v.model||"")+'</span></div>'; }).join("");
     res.style.display="block";
-    res.querySelectorAll(".comitem").forEach(function(it){ it.addEventListener("mousedown", function(e){ e.preventDefault(); inp.value=it.getAttribute("data-t"); res.style.display="none"; }); });
+    res.querySelectorAll(".comitem").forEach(function(it){ it.addEventListener("mousedown", function(e){ e.preventDefault(); inp.value=it.getAttribute("data-t"); lnTargetDbId=it.getAttribute("data-id")||null; res.style.display="none"; }); });
   }
-  inp.addEventListener("input", show);
+  inp.addEventListener("input", function(){ lnTargetDbId=null; show(); });
   inp.addEventListener("focus", show);
   inp.addEventListener("blur", function(){ setTimeout(function(){ res.style.display="none"; }, 200); });
 }
@@ -1633,9 +1633,11 @@ function saveLoaner(l){
     var evEl=modalBox.querySelector("#lnEEv"); patch.is_ev=!!(evEl && evEl.value);
     if(loanerPhoto) patch.photo=loanerPhoto;
   }
-  if(status==="대여중"){ patch.target_text=g("#lnTarget")||null; patch.location=g("#lnLoc")||null; patch.handler=g("#lnHandler")||null; patch.reserved_by=null; patch.reserved_at=null; patch.zone_id=null; }
-  else if(status==="예약중"){ patch.target_text=g("#lnTarget")||null; patch.location=null; patch.handler=null; patch.reserved_by=g("#lnRby")||who; patch.reserved_at=(l.status==="예약중"&&l.reserved_at)?l.reserved_at:now; patch.zone_id=null; }
-  else { patch.target_text=null; patch.location=null; patch.handler=null; patch.reserved_by=null; patch.reserved_at=null; patch.zone_id=(function(){ var el=modalBox.querySelector("#lnZone"); return el&&el.value?el.value:null; })(); }
+  var tgt=g("#lnTarget");
+  var tid=lnTargetDbId; if(!tid && tgt){ var mm=DATA.find(function(x){ return ((x.plate||"")+" "+(x.model||"")).trim()===tgt; }); tid=mm?mm.dbId:null; }
+  if(status==="대여중"){ patch.target_text=tgt||null; patch.target_db_id=tid; patch.location=g("#lnLoc")||null; patch.handler=g("#lnHandler")||null; patch.reserved_by=null; patch.reserved_at=null; patch.zone_id=null; }
+  else if(status==="예약중"){ patch.target_text=tgt||null; patch.target_db_id=tid; patch.location=null; patch.handler=null; patch.reserved_by=g("#lnRby")||who; patch.reserved_at=(l.status==="예약중"&&l.reserved_at)?l.reserved_at:now; patch.zone_id=null; }
+  else { patch.target_text=null; patch.target_db_id=null; patch.location=null; patch.handler=null; patch.reserved_by=null; patch.reserved_at=null; patch.zone_id=(function(){ var el=modalBox.querySelector("#lnZone"); return el&&el.value?el.value:null; })(); }
   sbClient.from("loaners").update(patch).eq("id",l.id).then(function(res){ if(res.error){ saveErr(res.error); return; } closeModal(); reloadLoaners(); });
 }
 function deleteLoaner(id){ if(!confirm("이 대차를 목록에서 삭제할까요?")) return; sbClient.from("loaners").update({active:false}).eq("id",id).then(function(res){ if(res.error){ saveErr(res.error); return; } closeModal(); reloadLoaners(); }); }
@@ -1754,6 +1756,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
