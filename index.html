@@ -487,9 +487,12 @@ body:not(.mode-mywork):not(.mode-location):not(.mode-loaner):not(.searching) .bo
 
 /* 대형화면(TV) 모드 */
 .tv{ display:none; }
-body.mode-tv header, body.mode-tv .titlebar, body.mode-tv .controls, body.mode-tv .summary, body.mode-tv .board, body.mode-tv .mywork, body.mode-tv .loc, body.mode-tv .loaner, body.mode-tv footer{ display:none !important; }
-body.mode-tv .wrap{ padding:0; max-width:none; }
-body.mode-tv .tv{ display:block; }
+body.mode-tv .controls, body.mode-tv .summary, body.mode-tv .titlebar .range, body.mode-tv #viewSeg, body.mode-tv .morewrap, body.mode-tv .shop, body.mode-tv footer{ display:none !important; }
+body.mode-tv .board{ flex-wrap:wrap; overflow-x:visible; }
+body.mode-tv .col{ flex:1 1 clamp(220px,23%,360px); }
+body.mode-tv .titlebar h1{ font-size:24px; }
+body.mode-tv .wrap{ max-width:none; }
+body.mode-tv .tv{ display:none; }
 .tvhead{ display:flex; justify-content:space-between; align-items:baseline; padding:16px 26px; background:#fff; border-bottom:1px solid var(--line); }
 .tvtitle{ font-size:26px; font-weight:800; }
 .tvclock{ font-size:16px; color:var(--muted); font-weight:700; }
@@ -512,6 +515,14 @@ body.mode-tv .tv{ display:block; }
 .tvadv{ margin-left:auto; font-size:13px; color:var(--muted); font-weight:700; }
 .tvdone{ font-size:13px; color:#1d8a45; font-weight:800; }
 .tvempty{ color:var(--muted); font-size:14px; padding:8px; }
+
+/* 검색창 축소 + 좌우 이동 버튼(화면 가장자리 고정) */
+.boardsearch{ flex:0 1 220px; max-width:220px; }
+.bnav{ position:fixed; top:56%; transform:translateY(-50%); z-index:60; width:44px; height:60px; border:1px solid #d6dae0; background:rgba(255,255,255,.94); border-radius:12px; font-size:26px; font-weight:800; color:#555; cursor:pointer; line-height:1; box-shadow:0 3px 12px rgba(0,0,0,.15); display:none; align-items:center; justify-content:center; padding:0; }
+.bnav.prev{ left:10px; } .bnav.next{ right:10px; }
+.bnav:hover{ background:#fff; color:#111; }
+body:not(.mode-mywork):not(.mode-location):not(.mode-loaner):not(.mode-tv):not(.searching) .bnav{ display:flex; }
+@media (max-width:820px){ .bnav{ display:none !important; } }
 </style>
 </head>
 <body>
@@ -525,7 +536,6 @@ body.mode-tv .tv{ display:block; }
     <h1>주간 출고 현황판</h1>
     <span class="range" id="weekRange"></span>
     <input id="boardSearch" class="boardsearch" type="search" placeholder="차량번호·차종 검색" />
-    <span id="boardNav" class="boardnav"><button id="boardPrev" class="bnav" aria-label="이전">‹</button><button id="boardNext" class="bnav" aria-label="다음">›</button></span>
   </div>
 
   <div class="controls">
@@ -811,14 +821,14 @@ function colControl(key, undone, label){
 var VIEW=null, pickName=false;
 var TVMODE=(typeof location!=="undefined") && /[?&]tv=1/.test(location.search);   // 대형화면 모드
 function isPhone(){ return (window.matchMedia && window.matchMedia('(max-width: 820px)').matches) || STANDALONE; }
-function getView(){ if(TVMODE) return 'tv'; if(VIEW) return VIEW; var s=null; try{ s=localStorage.getItem('wepair_view'); }catch(_){}
+function getView(){ if(TVMODE) return 'board'; if(VIEW) return VIEW; var s=null; try{ s=localStorage.getItem('wepair_view'); }catch(_){}
   VIEW = s || (isPhone()?'mywork':'board'); return VIEW; }
 function setView(v){ VIEW=v; try{ localStorage.setItem('wepair_view', v); }catch(_){} render(); }
 function applyViewChrome(){ var v=getView();
   document.body.classList.toggle('mode-mywork', v==='mywork');
   document.body.classList.toggle('mode-location', v==='location');
   document.body.classList.toggle('mode-loaner', v==='loaner');
-  document.body.classList.toggle('mode-tv', v==='tv');
+  document.body.classList.toggle('mode-tv', TVMODE);
   var seg=document.getElementById('viewSeg');
   if(seg){ var defs=[['board','현황판'],['mywork','내 작업'],['location','위치'],['loaner','대차']];
     seg.innerHTML=defs.map(function(d){ return '<button class="segv'+(v===d[0]?' on':'')+'" data-v="'+d[0]+'">'+d[1]+'</button>'; }).join('');
@@ -1732,11 +1742,6 @@ function boot(){
     moreMenu.querySelectorAll(".mm").forEach(function(b){ b.addEventListener("click", function(){ moreMenu.classList.remove("open"); var a=b.getAttribute("data-act"); if(a==="add") openRegister(); else if(a==="undo") openUndoDone(); else if(a==="tv") window.open(location.origin+location.pathname+"?tv=1","_blank"); else if(a==="logout") doLogout(); }); });
   }
   var bs=document.getElementById("boardSearch"); if(bs) bs.addEventListener("input", function(){ searchQuery=bs.value; render(); });
-  var bd=document.getElementById("board");
-  if(bd){ bd.addEventListener("wheel", function(e){   // 윈도우 마우스 휠(세로) → 보드 가로 스크롤
-    if(bd.classList.contains("srch")) return;
-    if(bd.scrollWidth>bd.clientWidth+5 && Math.abs(e.deltaY)>Math.abs(e.deltaX)){ bd.scrollLeft += e.deltaY; e.preventDefault(); }
-  }, {passive:false}); }
   function bscroll(dir){ var b=document.getElementById("board"); if(b) b.scrollBy({left:dir*Math.round(b.clientWidth*0.85), behavior:"smooth"}); }
   var bp=document.getElementById("boardPrev"); if(bp) bp.addEventListener("click", function(){ bscroll(-1); });
   var bn=document.getElementById("boardNext"); if(bn) bn.addEventListener("click", function(){ bscroll(1); });
@@ -1780,6 +1785,7 @@ window.addEventListener("DOMContentLoaded", boot);
 
 
 
+
 </script>
 <script>
 /* 서비스워커 등록 (PWA 설치·오프라인 대비) */
@@ -1789,5 +1795,6 @@ if('serviceWorker' in navigator){
   });
 }
 </script>
+<button id="boardPrev" class="bnav prev" aria-label="이전">‹</button><button id="boardNext" class="bnav next" aria-label="다음">›</button>
 </body>
 </html>
