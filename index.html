@@ -1356,8 +1356,13 @@ function loanerLine(l){
   if(l.memo) rhs += " / " + l.memo;
   return head + rhs;
 }
+/* 카톡방에서 쓰던 고정 순서 (차량번호 뒤 4자리 기준) — 임시 공유용 */
+var LOANER_ORDER=["9426","9427","1065","2568","8204","9498","9339","1207","4000","7522","3009","1808","8158","5856","6999","8505",
+                  "8262","8871","8893","3140","3589"];
+function last4(p){ return String(p||"").replace(/[^0-9]/g,"").slice(-4); }
 function loanerShareText(){
-  function cmp(a,b){ var m=String(a.model||"").localeCompare(String(b.model||"")); return m!==0?m:String(a.plate).localeCompare(String(b.plate)); }
+  function ord(l){ var i=LOANER_ORDER.indexOf(last4(l.plate)); return i<0?9999:i; }
+  function cmp(a,b){ var ia=ord(a), ib=ord(b); if(ia!==ib) return ia-ib; return String(a.plate).localeCompare(String(b.plate)); }
   var gen=LOANERS.filter(function(l){ return !l.is_ev; }).sort(cmp);
   var ev=LOANERS.filter(function(l){ return l.is_ev; }).sort(cmp);
   var d=new Date(); var stamp=(d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
@@ -1615,6 +1620,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
