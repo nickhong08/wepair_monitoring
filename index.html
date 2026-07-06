@@ -433,6 +433,9 @@ body.mode-loaner .loaner{ display:block; }
 .locprebtn{ padding:6px 11px; border:1px solid var(--line); background:#f7f8fa; border-radius:14px; font-size:13px; cursor:pointer; }
 .lnmemo{ width:100%; padding:9px 11px; border:1px solid #d6dae0; border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box; }
 .lnidle{ color:var(--muted); font-size:13px; padding:6px 2px 2px; }
+
+/* 대차 기본정보 수정 버튼 */
+.editinfo{ margin-left:auto; padding:5px 10px; border:1px solid #d6dae0; background:#fff; color:#555; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -541,7 +544,7 @@ let RAW=[]; let DATA=[]; let STATUS={}; let OVERRIDE={}; let currentAdvisor="전
 /* RAW = 표에서 불러온 전체 차량, DATA = 현황판에 실제로 담을 대상(수리중 + 최근 출고완료)만 걸러낸 것 */
 let ZONES=[]; let ZMAP={}; let LOCS={};            // 구역 목록 / id→구역 / 차량id→구역id
 var MAPIMG=null, mapLoaded=false, zoneEdit=false;  // 배경 지도 이미지 / 로드여부 / 구역편집 모드
-let LOANERS=[]; var loanerQuery="", loanerFilter="전체", loanerPhoto=null, lnStatusSel="대기";   // 공장대차
+let LOANERS=[]; var loanerQuery="", loanerFilter="전체", loanerPhoto=null, lnStatusSel="대기", loanerEditInfo=false;   // 공장대차
 
 /* ── 작업 상태 ── */
 function defaultStatus(v){ let st={body:0,paint:0,done:false,long:false,prio:false};
@@ -1301,8 +1304,8 @@ function renderLnList(){
   var out=list.filter(function(l){return l.status==="대여중";}).sort(byp);
   var rsv=list.filter(function(l){return l.status==="예약중";}).sort(byp);
   var idle=list.filter(function(l){return (l.status||"대기")==="대기";}).sort(byp);
-  var bar=document.createElement("div"); bar.className="mysum"; bar.innerHTML='<span class="mstat">대여중 '+out.length+' · 예약중 '+rsv.length+' · 대기 '+idle.length+' / 총 '+list.length+'대</span>'; body.appendChild(bar);
-  lnSection(body,"대여중",out,"ov"); lnSection(body,"예약중",rsv); lnSection(body,"대기",idle,"done");
+  var bar=document.createElement("div"); bar.className="mysum"; bar.innerHTML='<span class="mstat">대기 '+idle.length+' · 대여중 '+out.length+' · 예약중 '+rsv.length+' / 총 '+list.length+'대</span>'; body.appendChild(bar);
+  lnSection(body,"대기",idle); lnSection(body,"대여중",out,"ov"); lnSection(body,"예약중",rsv);
 }
 function renderLoaner(){
   var host=document.getElementById("loaner"); if(!host) return;
@@ -1345,14 +1348,14 @@ function addLoaner(){
   sbClient.from("loaners").insert(row).then(function(res){ if(res.error){ saveErr(res.error); return; } closeModal(); reloadLoaners(); });
 }
 function openLoanerEdit(l){
-  lnStatusSel = l.status || "대기";
+  lnStatusSel = l.status || "대기"; loanerEditInfo=false; loanerPhoto=null;
   var cars = DATA.map(function(v){ return '<option value="'+escA(v.plate+" "+(v.model||""))+'">'; }).join("");
   modalBox.innerHTML=
     '<div class="mhead"><span class="mt">대차 · '+esc(l.plate)+'</span><button class="x" id="mClose">✕</button></div>'+
     '<div class="mbody">'+
-      '<div class="vinfo"><span class="pl">'+esc(l.plate)+'</span><span class="md">'+esc(l.model||"")+'</span>'+(l.is_ev?'<span class="evtag">⚡전기</span>':'')+'</div>'+
+      '<div id="lnInfo"></div>'+
       '<div class="grp"><div class="grp-t">상태</div><div class="lnseg" id="lnSeg">'+
-        ["대기","예약중","대여중"].map(function(s){ return '<button class="lnsegb'+(s===lnStatusSel?" on":"")+'" data-s="'+s+'">'+s+'</button>'; }).join("")+
+        ["대기","대여중","예약중"].map(function(s){ return '<button class="lnsegb'+(s===lnStatusSel?" on":"")+'" data-s="'+s+'">'+s+'</button>'; }).join("")+
       '</div></div>'+
       '<div id="lnFields"></div>'+
       '<datalist id="lnCars">'+cars+'</datalist>'+
@@ -1364,12 +1367,26 @@ function openLoanerEdit(l){
   modalBox.querySelector("#lnDel").addEventListener("click", function(){ deleteLoaner(l.id); });
   modalBox.querySelector("#lnSave").addEventListener("click", function(){ saveLoaner(l); });
   modalBox.querySelectorAll(".lnsegb").forEach(function(b){ b.addEventListener("click", function(){ lnStatusSel=b.getAttribute("data-s"); modalBox.querySelectorAll(".lnsegb").forEach(function(x){ x.classList.toggle("on", x===b); }); renderLnFields(l); }); });
-  renderLnFields(l);
+  renderLnInfo(l); renderLnFields(l);
   showOverlay();
+}
+function renderLnInfo(l){
+  var box=modalBox.querySelector("#lnInfo"); if(!box) return;
+  if(!loanerEditInfo){
+    box.innerHTML='<div class="vinfo"><span class="pl">'+esc(l.plate)+'</span><span class="md">'+esc(l.model||"")+'</span>'+(l.is_ev?'<span class="evtag">⚡전기</span>':'')+'<button class="editinfo" id="lnEditInfo">✎ 정보 수정</button></div>';
+    var b=box.querySelector("#lnEditInfo"); if(b) b.addEventListener("click", function(){ loanerEditInfo=true; loanerPhoto=null; renderLnInfo(l); });
+  } else {
+    box.innerHTML='<div class="grp"><div class="grp-t">기본 정보 수정</div><div class="edform">'+
+      '<label class="edrow"><span class="edk">차량번호</span><input type="text" id="lnEPlate" value="'+escA(l.plate)+'"></label>'+
+      '<label class="edrow"><span class="edk">차종</span><input type="text" id="lnEModel" value="'+escA(l.model||"")+'"></label>'+
+      '<label class="edrow"><span class="edk">구분</span><select id="lnEEv"><option value=""'+(!l.is_ev?" selected":"")+'>일반</option><option value="1"'+(l.is_ev?" selected":"")+'>전기차</option></select></label>'+
+      '<div class="edrow col"><span class="edk">사진</span><button class="locbtn" id="lnEPhoto" type="button">사진 변경</button><img id="lnEPhotoPrev" class="rgprev" src="'+(l.photo||"")+'"'+(l.photo?"":' style="display:none"')+'></div>'+
+    '</div></div>';
+    var pb=box.querySelector("#lnEPhoto"); if(pb) pb.addEventListener("click", function(){ pickPhoto(function(d){ loanerPhoto=d; var pv=modalBox.querySelector("#lnEPhotoPrev"); if(pv){ pv.src=d; pv.style.display="block"; } }); });
+  }
 }
 function renderLnFields(l){
   var box=modalBox.querySelector("#lnFields"); if(!box) return;
-  var PRE=["서울","경기","세종","목동","광주"];
   var tv=function(x){ return x?escA(x):""; };
   var myn=(getMyName()&&getMyName()!=="__ALL__")?getMyName():"";
   var html="";
@@ -1382,21 +1399,25 @@ function renderLnFields(l){
     html='<div class="grp"><div class="grp-t">대여 정보</div><div class="edform">'+
       '<label class="edrow"><span class="edk">대여 대상</span><input type="text" id="lnTarget" list="lnCars" value="'+tv(l.target_text)+'" placeholder="수리차량 검색·입력"></label>'+
       '<label class="edrow"><span class="edk">담당</span><input type="text" id="lnHandler" value="'+tv(l.handler||myn)+'"></label>'+
-      '<label class="edrow col"><span class="edk">위치</span><input type="text" id="lnLoc" value="'+tv(l.location)+'" placeholder="지역">'+
-        '<div class="locpre">'+PRE.map(function(p){ return '<button type="button" class="locprebtn" data-p="'+p+'">'+p+'</button>'; }).join("")+'</div>'+
-      '</label></div></div>';
+      '<label class="edrow col"><span class="edk">대여 위치</span><input type="text" id="lnLoc" value="'+tv(l.location)+'" placeholder="예: 서울 강남구, 경기 광주"></label>'+
+    '</div></div>';
   } else {
     html='<div class="lnidle">대기 상태 — 공장 보유 중. (대여/예약 시 위 상태 버튼을 바꾸세요)</div>';
   }
   html+='<div class="grp"><div class="grp-t">메모</div><textarea id="lnMemo" rows="2" class="lnmemo">'+esc(l.memo||"")+'</textarea></div>';
   box.innerHTML=html;
-  box.querySelectorAll(".locprebtn").forEach(function(b){ b.addEventListener("click", function(){ var i=modalBox.querySelector("#lnLoc"); if(i) i.value=b.getAttribute("data-p"); }); });
 }
 function saveLoaner(l){
   var g=function(sel){ var el=modalBox.querySelector(sel); return el?el.value.trim():""; };
   var status=lnStatusSel, now=new Date().toISOString(), who=currentActor();
   var memo=(function(){ var el=modalBox.querySelector("#lnMemo"); return el?el.value:""; })();
   var patch={ status:status, memo:memo, updated_by:who, updated_at:now };
+  if(loanerEditInfo){
+    var pl=g("#lnEPlate"); if(!pl){ alert("차량번호를 입력하세요."); return; }
+    patch.plate=pl; patch.model=g("#lnEModel")||null;
+    var evEl=modalBox.querySelector("#lnEEv"); patch.is_ev=!!(evEl && evEl.value);
+    if(loanerPhoto) patch.photo=loanerPhoto;
+  }
   if(status==="대여중"){ patch.target_text=g("#lnTarget")||null; patch.location=g("#lnLoc")||null; patch.handler=g("#lnHandler")||null; patch.reserved_by=null; patch.reserved_at=null; }
   else if(status==="예약중"){ patch.target_text=g("#lnTarget")||null; patch.location=null; patch.handler=null; patch.reserved_by=g("#lnRby")||who; patch.reserved_at=(l.status==="예약중"&&l.reserved_at)?l.reserved_at:now; }
   else { patch.target_text=null; patch.location=null; patch.handler=null; patch.reserved_by=null; patch.reserved_at=null; }
@@ -1515,6 +1536,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
