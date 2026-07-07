@@ -523,6 +523,18 @@ body.mode-tv .tv{ display:none; }
 .bnav:hover{ background:#fff; color:#111; }
 body:not(.mode-mywork):not(.mode-location):not(.mode-loaner):not(.mode-tv):not(.searching) .bnav{ display:flex; }
 @media (max-width:820px){ .bnav{ display:none !important; } }
+
+/* 대차 카드 축소(한 화면에 더 많이) */
+.loanercard{ padding:6px 8px; }
+.loanercard .thumb{ width:46px; height:36px; }
+.loanercard .lomodel{ font-size:14px; }
+.loanercard .loplate{ font-size:12px; }
+.loanercard .cbot{ margin-top:3px; gap:5px; }
+.loanercard .lsub{ font-size:11px; }
+.loanercard .lupd{ margin-top:2px; font-size:10.5px; }
+body.mode-loaner .zcards{ gap:6px; }
+body.mode-loaner .mw-sec{ margin-bottom:12px; }
+body.mode-loaner .mw-sec .mw-h{ font-size:14px; margin-bottom:6px; padding-bottom:4px; }
 </style>
 </head>
 <body>
@@ -1433,12 +1445,11 @@ function renderLnList(){
     if(q && !(normStr(l.plate).indexOf(q)>=0 || normStr(l.model||"").indexOf(q)>=0)) return false;
     return true;
   });
-  var byp=function(a,b){ return String(a.plate).localeCompare(String(b.plate)); };
-  var out=list.filter(function(l){return l.status==="대여중";}).sort(byp);
-  var rsv=list.filter(function(l){return l.status==="예약중";}).sort(byp);
-  var idle=list.filter(function(l){return (l.status||"대기")==="대기";}).sort(byp);
-  var bar=document.createElement("div"); bar.className="mysum"; bar.innerHTML='<span class="mstat">대기 '+idle.length+' · 대여중 '+out.length+' · 예약중 '+rsv.length+' / 총 '+list.length+'대</span>'; body.appendChild(bar);
-  lnSection(body,"대기",idle); lnSection(body,"대여중",out,"ov"); lnSection(body,"예약중",rsv);
+  var out=list.filter(function(l){return l.status==="대여중";}).sort(loanerCmp);
+  var rsv=list.filter(function(l){return l.status==="예약중";}).sort(loanerCmp);
+  var idle=list.filter(function(l){return (l.status||"대기")==="대기";}).sort(loanerCmp);
+  var bar=document.createElement("div"); bar.className="mysum"; bar.innerHTML='<span class="mstat">대여중 '+out.length+' · 예약중 '+rsv.length+' · 대기 '+idle.length+' / 총 '+list.length+'대</span>'; body.appendChild(bar);
+  lnSection(body,"대여중",out,"ov"); lnSection(body,"예약중",rsv); lnSection(body,"대기",idle);
 }
 function renderLoaner(){
   var host=document.getElementById("loaner"); if(!host) return;
@@ -1491,6 +1502,8 @@ function loanerLine(l){
 var LOANER_ORDER=["9426","9427","1065","2568","8204","9498","9339","1207","4000","7522","3009","1808","8158","5856","6999","8505",
                   "8262","8871","8893","3140","3589"];
 function last4(p){ return String(p||"").replace(/[^0-9]/g,"").slice(-4); }
+function loanerOrd(l){ var i=LOANER_ORDER.indexOf(last4(l.plate)); return i<0?9999:i; }
+function loanerCmp(a,b){ var d=loanerOrd(a)-loanerOrd(b); return d!==0?d:String(a.plate).localeCompare(String(b.plate)); }
 function loanerShareText(){
   function ord(l){ var i=LOANER_ORDER.indexOf(last4(l.plate)); return i<0?9999:i; }
   function cmp(a,b){ var ia=ord(a), ib=ord(b); if(ia!==ib) return ia-ib; return String(a.plate).localeCompare(String(b.plate)); }
@@ -1756,6 +1769,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
