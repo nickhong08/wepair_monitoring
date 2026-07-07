@@ -535,6 +535,10 @@ body:not(.mode-mywork):not(.mode-location):not(.mode-loaner):not(.mode-tv):not(.
 body.mode-loaner .zcards{ gap:6px; }
 body.mode-loaner .mw-sec{ margin-bottom:12px; }
 body.mode-loaner .mw-sec .mw-h{ font-size:14px; margin-bottom:6px; padding-bottom:4px; }
+/* 대차: 내부 스크롤 없이 전체 펼침 */
+body.mode-loaner .zcards{ max-height:none; overflow:visible; }
+/* 대차 배정 목록: 내부 스크롤 */
+.lnplist{ max-height:52vh; overflow-y:auto; }
 </style>
 </head>
 <body>
@@ -1439,17 +1443,15 @@ function renderLnList(){
   var body=document.getElementById("lnBody"); if(!body) return;
   body.innerHTML="";
   var q=normStr(loanerQuery);
-  var list=LOANERS.filter(function(l){
-    if(loanerFilter==="전기"&&!l.is_ev) return false;
-    if(loanerFilter==="일반"&&l.is_ev) return false;
-    if(q && !(normStr(l.plate).indexOf(q)>=0 || normStr(l.model||"").indexOf(q)>=0)) return false;
-    return true;
-  });
+  var list=LOANERS.filter(function(l){ return !q || normStr(l.plate).indexOf(q)>=0 || normStr(l.model||"").indexOf(q)>=0; });
   var out=list.filter(function(l){return l.status==="대여중";}).sort(loanerCmp);
   var rsv=list.filter(function(l){return l.status==="예약중";}).sort(loanerCmp);
   var idle=list.filter(function(l){return (l.status||"대기")==="대기";}).sort(loanerCmp);
   var bar=document.createElement("div"); bar.className="mysum"; bar.innerHTML='<span class="mstat">대여중 '+out.length+' · 예약중 '+rsv.length+' · 대기 '+idle.length+' / 총 '+list.length+'대</span>'; body.appendChild(bar);
-  lnSection(body,"대여중",out,"ov"); lnSection(body,"예약중",rsv); lnSection(body,"대기",idle);
+  var F=loanerFilter;
+  if(F==="전체"||F==="대여중") lnSection(body,"대여중",out,"ov");
+  if(F==="전체"||F==="예약중") lnSection(body,"예약중",rsv);
+  if(F==="전체"||F==="대기") lnSection(body,"대기",idle);
 }
 function renderLoaner(){
   var host=document.getElementById("loaner"); if(!host) return;
@@ -1460,7 +1462,7 @@ function renderLoaner(){
     '<input class="locsearch" id="lnSearch" type="search" placeholder="번호·차종 검색" value="'+escA(loanerQuery)+'">';
   host.appendChild(tb);
   var fl=document.createElement("div"); fl.className="lnfilter";
-  ["전체","일반","전기"].forEach(function(f){ var b=document.createElement("button"); b.className="lnfb"+(loanerFilter===f?" on":""); b.textContent=f;
+  ["전체","대여중","예약중","대기"].forEach(function(f){ var b=document.createElement("button"); b.className="lnfb"+(loanerFilter===f?" on":""); b.textContent=f;
     b.addEventListener("click", function(){ loanerFilter=f; fl.querySelectorAll(".lnfb").forEach(function(x){ x.classList.toggle("on", x===b); }); renderLnList(); }); fl.appendChild(b); });
   host.appendChild(fl);
   var body=document.createElement("div"); body.id="lnBody"; host.appendChild(body);
@@ -1471,16 +1473,29 @@ function renderLoaner(){
 }
 /* 수리차량에 배정된 대차 (연결) */
 function loanersForCar(dbId){ return LOANERS.filter(function(l){ return l.target_db_id===dbId; }); }
+var lnpQuery="";
 function openLoanerPickFor(v){
-  var idle=LOANERS.filter(function(l){ return (l.status||"대기")==="대기"; }).sort(function(a,b){ return String(a.model||"").localeCompare(String(b.model||"")); });
-  var rows = idle.length ? idle.map(function(l){
-    return '<div class="udrow" data-id="'+escA(l.id)+'"><img class="udthumb" src="'+(l.photo||PLACEHOLDER)+'"><div class="udinfo"><div class="udtop"><span class="lomodel">'+esc(l.model||"")+'</span> <span class="loplate">'+esc(l.plate)+'</span></div><div class="udmeta">'+(l.zone_id?esc(zoneName(l.zone_id)||"구역"):"대기")+(l.is_ev?" · ⚡전기":"")+'</div></div><button class="udbtn move" data-id="'+escA(l.id)+'">배정</button></div>';
-  }).join("") : '<div class="nophoto">대기 중인 대차가 없습니다. (대차 탭에서 등록/반납)</div>';
-  modalBox.innerHTML='<div class="mhead"><span class="mt">대차 배정 · '+esc(v.plate)+'</span><button class="x" id="mClose">✕</button></div><div class="mbody"><div class="udnote">이 수리차량에 내보낼 대차를 선택하세요. (대기 중인 대차만)</div><div class="udlist">'+rows+'</div></div>';
+  lnpQuery="";
+  modalBox.innerHTML='<div class="mhead"><span class="mt">대차 배정 · '+esc(v.plate)+'</span><button class="x" id="mClose">✕</button></div>'+
+    '<div class="mbody"><div class="udnote">이 수리차량에 내보낼 대차를 선택하세요. (대여중·예약중 대차도 선택하면 이 차로 옮겨집니다)</div>'+
+    '<input class="udsearch" id="lnpSearch" type="search" placeholder="번호·차종 검색">'+
+    '<div class="udlist lnplist" id="lnpList"></div></div>';
   modalBox.querySelector("#mClose").addEventListener("click", closeModal);
-  modalBox.querySelectorAll(".udthumb").forEach(function(im){ im.onerror=function(){ imgErr(im); }; });
-  modalBox.querySelectorAll(".udbtn.move").forEach(function(b){ b.addEventListener("click", function(){ var l=LOANERS.find(function(x){return x.id===b.getAttribute("data-id");}); if(l) assignLoanerToCar(l, v); }); });
+  var si=modalBox.querySelector("#lnpSearch"); si.addEventListener("input", function(){ lnpQuery=si.value; renderLnPick(v); });
+  renderLnPick(v);
   showOverlay();
+}
+function renderLnPick(v){
+  var box=modalBox.querySelector("#lnpList"); if(!box) return;
+  var q=normStr(lnpQuery);
+  var list=LOANERS.filter(function(l){ return !q || normStr(l.plate).indexOf(q)>=0 || normStr(l.model||"").indexOf(q)>=0; }).sort(loanerCmp);
+  box.innerHTML = list.length ? list.map(function(l){
+    var st=l.status||"대기"; var bcls=st==="대여중"?"out":st==="예약중"?"rsv":"idle";
+    var sub = st==="대여중" ? ("대여중"+(l.target_text?(" · "+l.target_text):"")) : st==="예약중" ? ("예약"+(l.reserved_by?(" · "+l.reserved_by):"")) : (l.zone_id?(zoneName(l.zone_id)||"대기"):"대기");
+    return '<div class="udrow"><img class="udthumb" src="'+(l.photo||PLACEHOLDER)+'"><div class="udinfo"><div class="udtop"><span class="lomodel">'+esc(l.model||"")+'</span> <span class="loplate">'+esc(l.plate)+'</span> <span class="lbadge '+bcls+'">'+st+'</span></div><div class="udmeta">'+esc(sub)+(l.is_ev?" · ⚡전기":"")+'</div></div><button class="udbtn move" data-id="'+escA(l.id)+'">배정</button></div>';
+  }).join("") : '<div class="nophoto">일치하는 대차가 없습니다.</div>';
+  box.querySelectorAll(".udthumb").forEach(function(im){ im.onerror=function(){ imgErr(im); }; });
+  box.querySelectorAll(".udbtn.move").forEach(function(b){ b.addEventListener("click", function(){ var l=LOANERS.find(function(x){return x.id===b.getAttribute("data-id");}); if(l) assignLoanerToCar(l, v); }); });
 }
 function assignLoanerToCar(l, v){
   var who=currentActor(), now=new Date().toISOString();
@@ -1769,6 +1784,8 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
+
 
 
 
