@@ -1549,9 +1549,9 @@ function renderLnList(){
   var idle=list.filter(function(l){return (l.status||"대기")==="대기";}).sort(loanerCmp);
   var bar=document.createElement("div"); bar.className="mysum"; bar.innerHTML='<span class="mstat">대여중 '+out.length+' · 예약중 '+rsv.length+' · 대기 '+idle.length+' / 총 '+list.length+'대</span>'; body.appendChild(bar);
   var F=loanerFilter;
-  if(F==="전체"||F==="대여중") lnSection(body,"대여중",out,"ov");
   if(F==="전체"||F==="예약중") lnSection(body,"예약중",rsv);
   if(F==="전체"||F==="대기") lnSection(body,"대기",idle);
+  if(F==="전체"||F==="대여중") lnSection(body,"대여중",out,"ov");
 }
 function renderLoaner(){
   var host=document.getElementById("loaner"); if(!host) return;
@@ -1562,7 +1562,7 @@ function renderLoaner(){
     '<input class="locsearch" id="lnSearch" type="search" placeholder="번호·차종 검색" value="'+escA(loanerQuery)+'">';
   host.appendChild(tb);
   var fl=document.createElement("div"); fl.className="lnfilter";
-  ["전체","대여중","예약중","대기"].forEach(function(f){ var b=document.createElement("button"); b.className="lnfb"+(loanerFilter===f?" on":""); b.textContent=f;
+  ["전체","예약중","대기","대여중"].forEach(function(f){ var b=document.createElement("button"); b.className="lnfb"+(loanerFilter===f?" on":""); b.textContent=f;
     b.addEventListener("click", function(){ loanerFilter=f; fl.querySelectorAll(".lnfb").forEach(function(x){ x.classList.toggle("on", x===b); }); renderLnList(); }); fl.appendChild(b); });
   host.appendChild(fl);
   var body=document.createElement("div"); body.id="lnBody"; host.appendChild(body);
@@ -1923,6 +1923,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
