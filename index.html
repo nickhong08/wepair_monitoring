@@ -559,6 +559,11 @@ body.mode-loaner .zcards{ max-height:none; overflow:visible; }
 .mergebar b{color:#5c4400}
 .mergebtn{display:block;margin-top:9px;background:#f0a500;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:800;cursor:pointer}
 .mergebtn:hover{background:#d98f00}
+/* 병합 배너 변형 + 대상 강조 */
+.mergebar.plain{background:#f4f6f8;border-color:#dfe3e8;color:#4b5563}
+.mergebtn.ghost{background:#5b6b7b}
+.mergebtn.ghost:hover{background:#48555f}
+.udrow.match{background:#fff8e6;border:1px solid #f0d98c;border-radius:9px;padding:6px}
 </style>
 </head>
 <body>
@@ -1288,8 +1293,15 @@ function openDetail(v, edit){
   const locId=getLoc(v.dbId);
   const locSelHtml='<option value=""'+(!locId?" selected":"")+'>미지정</option>'+ZONES.map(function(z){ return '<option value="'+z.id+'"'+(z.id===locId?" selected":"")+'>'+esc(z.name)+'</option>'; }).join("");
   var normPl=function(p){ return String(p||"").replace(/\s/g,""); };
-  var dupG = isManual(v) ? RAW.find(function(x){ return !isManual(x) && x.plate && normPl(x.plate)===normPl(v.plate); }) : null;
-  var mergeBarHtml = dupG ? '<div class="mergebar">⚠ 위페어에 같은 차량번호(<b>'+esc(v.plate)+'</b>)가 등록됐어요. <b>병합</b>하면 상태·위치·대차·수정값이 위페어 차량으로 옮겨지고 이 수동 등록건은 정리됩니다.<button class="mergebtn" id="mergeBtn">병합하기</button></div>' : '';
+  var dupMatches = isManual(v) ? RAW.filter(function(x){ return !isManual(x) && x.plate && normPl(x.plate)===normPl(v.plate); }) : [];
+  var mergeBarHtml="";
+  if(isManual(v)){
+    if(dupMatches.length){
+      mergeBarHtml='<div class="mergebar">⚠ 위페어에 같은 차량번호(<b>'+esc(v.plate)+'</b>)가 '+dupMatches.length+'건 등록됐어요. 병합하면 상태·위치·대차·수정값이 위페어 차량으로 옮겨지고 이 수동 등록건은 정리됩니다.<button class="mergebtn" id="mergeBtn">병합할 차량 선택</button></div>';
+    } else {
+      mergeBarHtml='<div class="mergebar plain">위페어 등록 차량과 합칠 수 있어요. 차량번호가 다르게 입력된 경우에도 직접 선택해 병합하세요.<button class="mergebtn ghost" id="mergeBtn">위페어 차량 선택</button></div>';
+    }
+  }
   const loList = loanersForCar(v.dbId);
   const loInfoHtml = loList.length ? loList.map(function(x){ return '<button class="lolink" data-id="'+escA(x.id)+'">🚗 '+esc((x.model||"")+" "+x.plate)+'</button>'; }).join(" ") : '<span class="llv-none">없음</span>';
   const llGroupHtml = '<div class="grp"><div class="grp-t">위치 · 대차</div><div class="llbox">'+
@@ -1328,7 +1340,7 @@ function openDetail(v, edit){
   var al=modalBox.querySelector("#assignLoaner"); if(al) al.addEventListener("click", function(){ openLoanerPickFor(v); });
   modalBox.querySelectorAll(".lolink").forEach(function(b){ b.addEventListener("click", function(){ var l=LOANERS.find(function(x){return x.id===b.getAttribute("data-id");}); if(l) openLoanerEdit(l); }); });
   var delb=modalBox.querySelector("#delBtn"); if(delb) delb.addEventListener("click", function(){ deleteManual(v.dbId); });
-  var mgb=modalBox.querySelector("#mergeBtn"); if(mgb && dupG) mgb.addEventListener("click", function(){ mergeManualInto(v, dupG); });
+  var mgb=modalBox.querySelector("#mergeBtn"); if(mgb) mgb.addEventListener("click", function(){ openMergePicker(v); });
   var pb=modalBox.querySelector("#prioBtn"); if(pb) pb.addEventListener("click", function(){ togglePrio(v.dbId); });
   var sb=modalBox.querySelector("#shipBtn"); if(sb) sb.addEventListener("click", function(){ toggleDone(v.dbId); });
   var lb2=modalBox.querySelector("#longBtn"); if(lb2) lb2.addEventListener("click", function(){ toggleLong(v.dbId); });
@@ -1387,6 +1399,33 @@ function deleteManual(dbId){
   if(!confirm("이 수동 등록 차량을 삭제할까요?")) return;
   sbClient.from("vehicle_status").delete().eq("db_id",dbId).then(function(){});
   sbClient.from("vehicles").delete().eq("db_id",dbId).then(function(res){ if(res.error){ saveErr(res.error); return; } closeModal(); loadData(); });
+}
+/* 병합 대상(위페어 등록 차량) 직접 선택 — 동일번호 여러 건·차량번호 오입력 대응 */
+var mergeQuery="";
+function openMergePicker(manualV){
+  mergeQuery="";
+  modalBox.innerHTML='<div class="mhead"><span class="mt">병합할 위페어 차량 선택</span><button class="x" id="mClose">✕</button></div>'+
+    '<div class="mbody"><div class="udnote">수동 등록건 <b>'+esc(manualV.plate)+'</b> 을(를) 어느 위페어 등록 차량으로 합칠지 선택하세요. 같은 차량번호가 위에 표시됩니다.</div>'+
+    '<input class="udsearch" id="mgSearch" type="search" placeholder="번호·차종 검색">'+
+    '<div class="udlist lnplist" id="mgList"></div></div>';
+  modalBox.querySelector("#mClose").addEventListener("click", closeModal);
+  var si=modalBox.querySelector("#mgSearch"); si.addEventListener("input", function(){ mergeQuery=si.value; renderMergePick(manualV); });
+  renderMergePick(manualV);
+  showOverlay();
+}
+function renderMergePick(manualV){
+  var box=modalBox.querySelector("#mgList"); if(!box) return;
+  var np=function(p){ return String(p||"").replace(/\s/g,""); };
+  var q=normStr(mergeQuery); var samePl=np(manualV.plate);
+  var cand=RAW.filter(function(x){ return !isManual(x) && x.dbId!==manualV.dbId; })
+    .filter(function(x){ return !q || normStr(x.plate).indexOf(q)>=0 || normStr(x.model||"").indexOf(q)>=0; });
+  cand.sort(function(a,b){ var am=np(a.plate)===samePl?0:1, bm=np(b.plate)===samePl?0:1; return am-bm || String(a.plate).localeCompare(String(b.plate)); });
+  box.innerHTML = cand.length ? cand.map(function(x){
+    var match=np(x.plate)===samePl;
+    return '<div class="udrow'+(match?" match":"")+'"><img class="udthumb" src="'+(x.photo||PLACEHOLDER)+'"><div class="udinfo"><div class="udtop"><span class="lomodel">'+esc(x.model||"")+'</span> <span class="loplate">'+esc(x.plate)+'</span>'+(match?' <span class="lbadge out">동일번호</span>':'')+'</div><div class="udmeta">담당 '+esc(x.advisor||"미분류")+'</div></div><button class="udbtn move" data-id="'+escA(x.dbId)+'">병합</button></div>';
+  }).join("") : '<div class="nophoto">일치하는 위페어 차량이 없습니다.</div>';
+  box.querySelectorAll(".udthumb").forEach(function(im){ im.onerror=function(){ imgErr(im); }; });
+  box.querySelectorAll(".udbtn.move").forEach(function(b){ b.addEventListener("click", function(){ var g=RAW.find(function(x){ return x.dbId===b.getAttribute("data-id"); }); if(g) mergeManualInto(manualV, g); }); });
 }
 /* 수동 등록건 → 위페어 등록 차량으로 병합: 상태·위치·대차·수정값을 옮기고 수동건 삭제 */
 function mergeManualInto(manualV, glideV){
@@ -1887,6 +1926,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
