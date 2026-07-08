@@ -681,10 +681,7 @@ var MAPIMG=null, mapLoaded=false, zoneEdit=false;  // 배경 지도 이미지 / 
 let LOANERS=[]; var loanerQuery="", loanerFilter="전체", loanerPhoto=null, lnStatusSel="대기", loanerEditInfo=false, lnTargetDbId=null;   // 공장대차
 
 /* ── 작업 상태 ── */
-function defaultStatus(v){ let st={body:0,paint:0,done:false,long:false,prio:false};
-  if(v.discharge){ const n=dayDiff(v.discharge,BOARD_TODAY);
-    if(n<=0){st.body=1;st.paint=2;} else if(n===1){st.body=1;st.paint=1;} else if(n===2){st.body=1;st.paint=0;} }
-  return st; }
+function defaultStatus(v){ return {body:0,paint:0,done:false,long:false,prio:false}; }   // 자동 추정 없음: 손대기 전까지 판금대기·면대기
 function getStatus(v){ const s=STATUS[v.dbId]; return s?{body:s.body,paint:s.paint,done:!!s.done,long:!!s.long,prio:!!s.prio,updated_at:s.updated_at}:defaultStatus(v); }
 /* 현황판에 담을 대상인지 판정 (필터 숫자·KPI·칸 배치의 공통 기준) */
 function relevant(v){
@@ -1926,6 +1923,7 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
 
 
 
