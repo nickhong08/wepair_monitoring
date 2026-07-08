@@ -549,6 +549,16 @@ body.mode-loaner .zcards{ max-height:none; overflow:visible; }
 .stfdel:hover{background:#fbeeee}
 /* 모바일 핀 축소 */
 @media(max-width:640px){.pinmark{width:34px;height:34px}.pincnt{min-width:17px;height:17px;font-size:10px;top:-6px;right:-6px;padding:0 4px}.pinlab{font-size:10px;padding:1px 6px;margin-top:3px}}
+/* 상세 보조 액션 + 병합 배너 */
+.detacts{display:flex;gap:7px;margin-top:8px}
+.detacts .actbtn{flex:1;padding:10px 6px;border:1px solid #d6dae0;background:#fff;border-radius:9px;font-size:13px;font-weight:700;color:#374151;cursor:pointer}
+.detacts .actbtn:hover{background:#f4f6f8}
+.detacts .actbtn.on{background:#eef4ff;border-color:#9bbcf0;color:#1e50a8}
+.detacts .actbtn.warn{color:#c0504d;border-color:#e2b6b6}
+.mergebar{margin:10px 0;padding:11px 13px;background:#fff8e6;border:1px solid #f0d98c;border-radius:10px;font-size:13px;color:#7a5b00;line-height:1.55}
+.mergebar b{color:#5c4400}
+.mergebtn{display:block;margin-top:9px;background:#f0a500;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:800;cursor:pointer}
+.mergebtn:hover{background:#d98f00}
 </style>
 </head>
 <body>
@@ -632,19 +642,20 @@ function dateOnly(s){ if(!s) return null; const p=String(s).slice(0,10).split("-
 /* Supabase vehicles 행 → 화면 표준 형태
    원본은 v.orig 에 보관, 화면에 보이는 값은 applyOverrides 가 (수정값 있으면 수정값) 으로 덮어씀 */
 function escA(s){ return esc(s).replace(/"/g,"&quot;"); }
-function ovFrom(s){ return { discharge:s.ov_discharge, advisor:s.ov_advisor, memo:s.ov_memo, owner:s.ov_owner, insurer:s.ov_insurer, insurerStaff:s.ov_insurer_staff, rent:s.ov_rent }; }
+function ovFrom(s){ return { discharge:s.ov_discharge, dischargeClear:s.ov_discharge_cleared, advisor:s.ov_advisor, memo:s.ov_memo, owner:s.ov_owner, insurer:s.ov_insurer, insurerStaff:s.ov_insurer_staff, rent:s.ov_rent }; }
 function applyOverrides(v){
   const o=OVERRIDE[v.dbId]||{};
   const t=function(x){ return (x!=null && String(x).trim()!=="")?x:null; };
-  v.discharge    = o.discharge ? dateOnly(o.discharge) : v.orig.discharge;
-  v.dischargeSrc = o.discharge ? "edit" : v.dischargeSrcOrig;
+  if(o.discharge){ v.discharge=dateOnly(o.discharge); v.dischargeSrc="edit"; }
+  else if(o.dischargeClear){ v.discharge=null; v.dischargeSrc="edit"; }   // 사용자가 출고일을 비워 미지정으로 지정
+  else { v.discharge=v.orig.discharge; v.dischargeSrc=v.dischargeSrcOrig; }
   v.advisor      = t(o.advisor)      || v.orig.advisor;
   v.memo         = (o.memo!=null)    ? o.memo : v.orig.memo;
   v.owner        = t(o.owner)        || v.orig.owner;
   v.insurer      = t(o.insurer)      || v.orig.insurer;
   v.insurerStaff = t(o.insurerStaff) || v.orig.insurerStaff;
   v.rent         = t(o.rent)         || v.orig.rent;
-  v.edited = { discharge:!!o.discharge, advisor:!!t(o.advisor), memo:o.memo!=null, owner:!!t(o.owner), insurer:!!t(o.insurer), insurerStaff:!!t(o.insurerStaff), rent:!!t(o.rent) };
+  v.edited = { discharge:(!!o.discharge||!!o.dischargeClear), advisor:!!t(o.advisor), memo:o.memo!=null, owner:!!t(o.owner), insurer:!!t(o.insurer), insurerStaff:!!t(o.insurerStaff), rent:!!t(o.rent) };
 }
 function mapRow(r){
   const v={ dbId:r.db_id, plate:(r.plate||"").trim(), model:(r.model||"").trim(),
@@ -698,8 +709,9 @@ function setOvDischarge(dbId, ymdStr){
   const o=OVERRIDE[dbId]||(OVERRIDE[dbId]={});
   const origY=v.orig.discharge?ymd(v.orig.discharge):"";
   o.discharge=(ymdStr&&ymdStr!==origY)?ymdStr:null;     // 원본과 같으면 수정값 해제
+  o.dischargeClear=false;
   applyOverrides(v); render();
-  saveOverride(dbId,{ ov_discharge:o.discharge });
+  saveOverride(dbId,{ ov_discharge:o.discharge, ov_discharge_cleared:false });
 }
 function setOvAdvisor(dbId, name){
   const v=RAW.find(x=>x.dbId===dbId); if(!v) return;
@@ -715,8 +727,13 @@ function saveEdit(dbId){
   const g=function(sel){ var el=modalBox.querySelector(sel); return el?el.value:null; };
   var advSel=g("#edAdv");
   var memoIn=g("#edMemo"); memoIn=memoIn==null?"":memoIn; var memoBase=v.orig.memo||"";
+  var disIn=g("#edDis");
+  var disOv, disClear;
+  if(disIn){ disOv=ovDate(disIn, v.orig.discharge); disClear=false; }
+  else { disOv=null; disClear=!!v.orig.discharge; }   // 비웠고 원본에 출고일이 있으면 → 미지정으로 강제
   const patchO={
-    discharge: ovDate(g("#edDis"), v.orig.discharge),
+    discharge: disOv,
+    dischargeClear: disClear,
     advisor: (advSel && advSel!==v.orig.advisor)?advSel:null,
     memo: (memoIn===memoBase)?null:memoIn,
     owner: ovText(g("#edOwner"), v.orig.owner),
@@ -726,7 +743,7 @@ function saveEdit(dbId){
   };
   OVERRIDE[dbId]=patchO;
   applyOverrides(v); render(); buildAdvisorFilter();
-  saveOverride(dbId,{ ov_discharge:patchO.discharge, ov_advisor:patchO.advisor, ov_memo:patchO.memo, ov_owner:patchO.owner, ov_insurer:patchO.insurer, ov_insurer_staff:patchO.insurerStaff, ov_rent:patchO.rent });
+  saveOverride(dbId,{ ov_discharge:patchO.discharge, ov_discharge_cleared:patchO.dischargeClear, ov_advisor:patchO.advisor, ov_memo:patchO.memo, ov_owner:patchO.owner, ov_insurer:patchO.insurer, ov_insurer_staff:patchO.insurerStaff, ov_rent:patchO.rent });
   openDetail(v);
 }
 function revertAll(dbId){
@@ -734,7 +751,7 @@ function revertAll(dbId){
   const v=RAW.find(x=>x.dbId===dbId); if(!v) return;
   OVERRIDE[dbId]={};
   applyOverrides(v); render(); buildAdvisorFilter();
-  saveOverride(dbId,{ ov_discharge:null, ov_advisor:null, ov_memo:null, ov_owner:null, ov_insurer:null, ov_insurer_staff:null, ov_rent:null });
+  saveOverride(dbId,{ ov_discharge:null, ov_discharge_cleared:null, ov_advisor:null, ov_memo:null, ov_owner:null, ov_insurer:null, ov_insurer_staff:null, ov_rent:null });
   openDetail(v);
 }
 function cmpCard(a,b){ return (getStatus(a).done-getStatus(b).done)||(getStatus(b).prio-getStatus(a).prio)||a.plate.localeCompare(b.plate); }
@@ -1002,8 +1019,7 @@ function mwSection(host, title, list, cls){
   host.appendChild(sec);
 }
 function renderNamePicker(host, cur){
-  var names=advisorList().slice();
-  RAW.forEach(function(v){ if(v.advisor && v.advisor!=="미분류" && names.indexOf(v.advisor)<0) names.push(v.advisor); });
+  var names=advisorList().slice();   // 작업자 관리 목록 기준(상단 필터와 통일)
   if(names.indexOf("미분류")<0) names.push("미분류");   // 미분류 담당 선택 추가
   var cnt=function(pred){ return DATA.filter(function(v){ return pred(v) && !getStatus(v).done; }).length; };
   var btns=names.map(function(n){ var c=cnt(function(v){ return v.advisor===n; });
@@ -1269,10 +1285,11 @@ function openDetail(v, edit){
   const colorChip=(v.color&&v.color!=="-")?'<span class="colorchip">색상 '+esc(v.color)+'</span>':'';
   const photosHtml=(v.photos&&v.photos.length)?'<div class="photos">'+v.photos.map(p=>'<img data-full="'+p+'" src="'+p+'">').join("")+'</div>':'<div class="nophoto">등록된 작업사진이 없습니다.</div>';
   const advLine='<div class="vadv">담당 어드바이저 · <b>'+esc(v.advisor)+'</b>'+(v.edited.advisor?'<span class="edbadge">수정됨</span>':'')+'</div>';
-  const editBtnHtml='<button class="editbtn" id="editBtn">✎ 정보 수정 (출고일·담당자·연락처·메모)</button>';
   const locId=getLoc(v.dbId);
   const locSelHtml='<option value=""'+(!locId?" selected":"")+'>미지정</option>'+ZONES.map(function(z){ return '<option value="'+z.id+'"'+(z.id===locId?" selected":"")+'>'+esc(z.name)+'</option>'; }).join("");
-  const delBtnHtml = isManual(v) ? '<button class="delbtn" id="delBtn">🗑 수동 등록 삭제</button>' : '';
+  var normPl=function(p){ return String(p||"").replace(/\s/g,""); };
+  var dupG = isManual(v) ? RAW.find(function(x){ return !isManual(x) && x.plate && normPl(x.plate)===normPl(v.plate); }) : null;
+  var mergeBarHtml = dupG ? '<div class="mergebar">⚠ 위페어에 같은 차량번호(<b>'+esc(v.plate)+'</b>)가 등록됐어요. <b>병합</b>하면 상태·위치·대차·수정값이 위페어 차량으로 옮겨지고 이 수동 등록건은 정리됩니다.<button class="mergebtn" id="mergeBtn">병합하기</button></div>' : '';
   const loList = loanersForCar(v.dbId);
   const loInfoHtml = loList.length ? loList.map(function(x){ return '<button class="lolink" data-id="'+escA(x.id)+'">🚗 '+esc((x.model||"")+" "+x.plate)+'</button>'; }).join(" ") : '<span class="llv-none">없음</span>';
   const llGroupHtml = '<div class="grp"><div class="grp-t">위치 · 대차</div><div class="llbox">'+
@@ -1284,9 +1301,13 @@ function openDetail(v, edit){
     '<div class="mbody">'+
       '<img class="hero" src="'+(v.photo||PLACEHOLDER)+'">'+
       '<div class="vinfo"><span class="btag '+(ins?"ins":"gen")+'">'+esc(v.insurance||"-")+'</span><span class="pl">'+esc(v.plate)+'</span><span class="md">'+esc(v.model)+'</span>'+colorChip+'<span class="priochip'+(s.prio?" on":"")+'" id="prioBtn">'+(s.prio?"★ 우선":"☆ 우선")+'</span></div>'+
-      advLine+ llGroupHtml+ editBtnHtml+ delBtnHtml+
+      advLine+ mergeBarHtml+ llGroupHtml+
       '<button class="shipbtn '+(s.done?"on":"")+'" id="shipBtn">'+(s.done?"↩ 출고 완료 취소":"✓ 출고 완료 처리")+'</button>'+
-      (!v.discharge ? '<button class="longbtn '+(s.long?"on":"")+'" id="longBtn">'+(s.long?"↩ 장기건 해제 (미정으로)":"⏳ 장기건(작업대기)으로 이동")+'</button>' : '')+
+      '<div class="detacts">'+
+        '<button class="actbtn" id="editBtn">✎ 정보 수정</button>'+
+        (!v.discharge ? '<button class="actbtn'+(s.long?" on":"")+'" id="longBtn">'+(s.long?"↩ 장기건 해제":"⏳ 장기건")+'</button>' : '')+
+        (isManual(v) ? '<button class="actbtn warn" id="delBtn">🗑 삭제</button>' : '')+
+      '</div>'+
       '<div class="grp"><div class="grp-t">작업 상태 · 탭하여 변경</div><div class="segwrap">'+
         '<div class="segrow"><span class="seglab">판금</span>'+segBtn("body",0,stIcon(BODY_META[0].ic,BODY_META[0].cls)+BODY_META[0].lab,s.body,v.dbId)+segBtn("body",1,stIcon(BODY_META[1].ic,BODY_META[1].cls)+BODY_META[1].lab,s.body,v.dbId)+'</div>'+
         '<div class="segrow"><span class="seglab">도장</span>'+segBtn("paint",0,stIcon(PAINT_META[0].ic,PAINT_META[0].cls)+PAINT_META[0].lab,s.paint,v.dbId)+segBtn("paint",1,stIcon(PAINT_META[1].ic,PAINT_META[1].cls)+PAINT_META[1].lab,s.paint,v.dbId)+segBtn("paint",2,stIcon(PAINT_META[2].ic,PAINT_META[2].cls)+PAINT_META[2].lab,s.paint,v.dbId)+'</div>'+
@@ -1307,6 +1328,7 @@ function openDetail(v, edit){
   var al=modalBox.querySelector("#assignLoaner"); if(al) al.addEventListener("click", function(){ openLoanerPickFor(v); });
   modalBox.querySelectorAll(".lolink").forEach(function(b){ b.addEventListener("click", function(){ var l=LOANERS.find(function(x){return x.id===b.getAttribute("data-id");}); if(l) openLoanerEdit(l); }); });
   var delb=modalBox.querySelector("#delBtn"); if(delb) delb.addEventListener("click", function(){ deleteManual(v.dbId); });
+  var mgb=modalBox.querySelector("#mergeBtn"); if(mgb && dupG) mgb.addEventListener("click", function(){ mergeManualInto(v, dupG); });
   var pb=modalBox.querySelector("#prioBtn"); if(pb) pb.addEventListener("click", function(){ togglePrio(v.dbId); });
   var sb=modalBox.querySelector("#shipBtn"); if(sb) sb.addEventListener("click", function(){ toggleDone(v.dbId); });
   var lb2=modalBox.querySelector("#longBtn"); if(lb2) lb2.addEventListener("click", function(){ toggleLong(v.dbId); });
@@ -1365,6 +1387,34 @@ function deleteManual(dbId){
   if(!confirm("이 수동 등록 차량을 삭제할까요?")) return;
   sbClient.from("vehicle_status").delete().eq("db_id",dbId).then(function(){});
   sbClient.from("vehicles").delete().eq("db_id",dbId).then(function(res){ if(res.error){ saveErr(res.error); return; } closeModal(); loadData(); });
+}
+/* 수동 등록건 → 위페어 등록 차량으로 병합: 상태·위치·대차·수정값을 옮기고 수동건 삭제 */
+function mergeManualInto(manualV, glideV){
+  if(!confirm("수동 등록건 '"+manualV.plate+"' 을(를) 위페어 등록 차량으로 병합할까요?\n\n· 작업 상태·위치·대차 배정과 직접 입력한 수정값이 위페어 차량으로 옮겨집니다.\n· 위페어 차량에 이미 입력된 값이 있으면 수동 등록건 값으로 덮어씁니다.\n· 병합 후 이 수동 등록건은 삭제됩니다.")) return;
+  suppressUntil=Date.now()+8000;
+  var finishDelete=function(){
+    sbClient.from("loaners").update({ target_db_id:glideV.dbId, target_text:((glideV.plate||"")+" "+(glideV.model||"")).trim() }).eq("target_db_id", manualV.dbId).then(function(){
+      sbClient.from("vehicle_status").delete().eq("db_id", manualV.dbId).then(function(){
+        sbClient.from("vehicles").delete().eq("db_id", manualV.dbId).then(function(res){
+          if(res.error){ saveErr(res.error); return; }
+          closeModal(); loadData().then(function(){ var g=RAW.find(function(x){ return x.dbId===glideV.dbId; }); if(g) openDetail(g); });
+        });
+      });
+    });
+  };
+  sbClient.from("vehicle_status").select("*").eq("db_id", manualV.dbId).maybeSingle().then(function(r){
+    var src=r&&r.data;
+    if(src){
+      var copy={ db_id:glideV.dbId, shop_id:SHOP_ID,
+        body:src.body, paint:src.paint, done:src.done, is_long:src.is_long, is_prio:src.is_prio,
+        location_zone:src.location_zone,
+        ov_discharge:src.ov_discharge, ov_discharge_cleared:src.ov_discharge_cleared,
+        ov_advisor:src.ov_advisor, ov_memo:src.ov_memo, ov_owner:src.ov_owner,
+        ov_insurer:src.ov_insurer, ov_insurer_staff:src.ov_insurer_staff, ov_rent:src.ov_rent,
+        updated_at:new Date().toISOString() };
+      sbClient.from("vehicle_status").upsert(copy,{onConflict:"db_id"}).then(function(res){ if(res.error){ saveErr(res.error); return; } finishDelete(); });
+    } else { finishDelete(); }
+  });
 }
 
 /* ── 정보 수정 폼 (출고일·담당자·연락처·보험·메모) ── */
@@ -1837,6 +1887,8 @@ function boot(){
   });
 }
 window.addEventListener("DOMContentLoaded", boot);
+
+
 
 
 
